@@ -1,3 +1,4 @@
+import { putFile } from '../../../../lib/storage';
 import type { APIRoute } from 'astro';
 import { handle, json, body, fail, parseJSON } from '../../../../lib/util';
 import { all, first, run, track } from '../../../../lib/db';
@@ -83,7 +84,7 @@ export const POST: APIRoute = ({ params, request, locals }) => handle(async () =
     const n: any = await first(env.DB, 'SELECT COUNT(*) n FROM files WHERE order_id=?', o.id);
     if (n.n >= 30) fail(400, 'Tối đa 30 tệp mỗi yêu cầu');
     const key = `orders/${o.code}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
-    await env.FILES.put(key, f.stream(), { httpMetadata: { contentType: f.type || 'application/octet-stream' } });
+    await putFile(env, key, f);
     await run(env.DB, 'INSERT INTO files (order_id,key,name,size,type,kind) VALUES (?,?,?,?,?,?)', o.id, key, f.name, f.size, f.type, 'upload');
     await run(env.DB, 'INSERT INTO messages (order_id,role,content) VALUES (?,?,?)', o.id, 'user', `[Đã tải tệp: ${f.name}]`);
     return json({ ok: true, name: f.name });

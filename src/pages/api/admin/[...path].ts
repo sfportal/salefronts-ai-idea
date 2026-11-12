@@ -1,3 +1,4 @@
+import { putFile } from '../../../lib/storage';
 import type { APIRoute } from 'astro';
 import { handle, json, body, fail, parseJSON } from '../../../lib/util';
 import { all, first, run, audit, setSetting } from '../../../lib/db';
@@ -83,7 +84,7 @@ export const ALL: APIRoute = ({ params, request, locals, url }) => handle(async 
     const fd = await request.formData(); const f = fd.get('file') as File | null; if (!f || typeof f === 'string') fail(400, 'Chưa chọn tệp');
     if (f.size > 95 * 1024 * 1024) fail(400, 'Tệp tối đa 95MB, tệp lớn hơn hãy dán link');
     const key = `deliveries/${o.code}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
-    await env.FILES.put(key, f.stream(), { httpMetadata: { contentType: f.type || 'application/octet-stream' } });
+    await putFile(env, key, f);
     await run(env.DB, 'INSERT INTO files (order_id,key,name,size,type,kind) VALUES (?,?,?,?,?,?)', o.id, key, f.name, f.size, f.type, 'delivery');
     const row: any = await first(env.DB, 'SELECT id FROM files WHERE key=?', key);
     return json({ ok: true, file_id: row.id, name: f.name });

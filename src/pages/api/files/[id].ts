@@ -1,3 +1,4 @@
+import { getFile } from '../../../lib/storage';
 import type { APIRoute } from 'astro';
 import { first } from '../../../lib/db';
 import { isStaff } from '../../../lib/access';
@@ -9,7 +10,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
   const owner = (u && f.user_id === u.id) || (!f.user_id && f.vid === locals.vid);
   if (!isStaff(u) && !owner) return new Response('Không có quyền', { status: 403 });
   if (!isStaff(u) && f.kind === 'delivery' && f.paid_amount < f.total) return new Response('Bạn cần thanh toán đủ để tải kết quả', { status: 402 });
-  const obj = await env.FILES.get(f.key);
+  const obj = await getFile(env, f.key);
   if (!obj) return new Response('Tệp không còn', { status: 404 });
-  return new Response(obj.body, { headers: { 'content-type': f.type || 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.name)}` } });
+  return new Response(obj, { headers: { 'content-type': f.type || 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.name)}` } });
 };

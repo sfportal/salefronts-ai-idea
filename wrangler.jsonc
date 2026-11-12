@@ -7,9 +7,10 @@
   "assets": { "binding": "ASSETS", "directory": "./dist" },
   "observability": { "enabled": true },
   "d1_databases": [
-    { "binding": "DB", "database_name": "salefronts-ai", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "salefronts-ai", "database_id": "c1299a9e-6c93-4d49-85aa-a8ada18b3e12", "migrations_dir": "migrations" }
   ],
-  "r2_buckets": [{ "binding": "FILES", "bucket_name": "salefronts-ai-files" }],
+  // R2 chưa bật trên tài khoản: tệp tạm lưu trong D1 (tối đa 1,8MB/tệp). Bật R2 rồi bỏ comment dòng dưới để nhận tệp lớn.
+  // "r2_buckets": [{ "binding": "FILES", "bucket_name": "salefronts-ai-files" }],
   "vars": {
     "OWNER_EMAIL": "minhducuy@gmail.com",
     "SEPAY_BASE": "https://sepay-thuchi.sfportal.workers.dev",
