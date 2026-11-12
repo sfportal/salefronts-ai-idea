@@ -8,7 +8,7 @@ const q: any = await first(env.DB, "SELECT (SELECT COUNT(*) FROM orders WHERE st
 const M = [
   ['dash', '/admin', '📊', 'Tổng quan', 0], ['orders', '/admin/orders', '✅', 'Duyệt yêu cầu', q.paid + q.quote], ['templates', '/admin/templates', '🧩', 'Kho mẫu', 0],
   ['crm', '/admin/crm', '👥', 'CRM khách hàng', 0], ['cskh', '/admin/cskh', '💬', 'CSKH & lịch tư vấn', q.sup + q.bk], ['promos', '/admin/promos', '🏷️', 'Khuyến mãi', 0],
-  ['aff', '/admin/affiliate', '🤝', 'Affiliate', 0], ['pay', '/admin/payments', '💳', 'Giao dịch', 0], ['settings', '/admin/settings', '⚙️', 'Thiết lập', 0],
+  ['aff', '/admin/affiliate', '🤝', 'Affiliate', 0], ['pay', '/admin/payments', '💳', 'Giao dịch', 0], ['studio', '/admin/studio', '🎨', 'Studio & Ví', 0], ['settings', '/admin/settings', '⚙️', 'Thiết lập', 0],
 ];
 ---
 <!doctype html>

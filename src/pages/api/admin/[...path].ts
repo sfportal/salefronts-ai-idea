@@ -5,8 +5,9 @@ import { all, first, run, audit, setSetting } from '../../../lib/db';
 import { need } from '../../../lib/auth';
 import { setStatus, addEvent, sendHandoff } from '../../../lib/orders';
 import { onPaymentPaid } from '../../../lib/orders';
+import { walletApply } from '../../../lib/wallet';
 
-const SETTINGS_KEYS = ['ai_provider', 'ai_model', 'support_provider', 'support_model', 'deepseek_model', 'max_revisions', 'deposit_threshold', 'deposit_pct', 'consult_price', 'aff_commission_pct', 'aff_discount_pct', 'ga4_id', 'hero_title', 'support_kb'];
+const SETTINGS_KEYS = ['ai_provider', 'ai_model', 'support_provider', 'support_model', 'deepseek_model', 'max_revisions', 'deposit_threshold', 'deposit_pct', 'consult_price', 'aff_commission_pct', 'aff_discount_pct', 'ga4_id', 'hero_title', 'support_kb', 'wallet_min_topup', 'pay_days', 'contact_hours'];
 
 export const ALL: APIRoute = ({ params, request, locals, url }) => handle(async () => {
   const env = locals.runtime.env; const u = locals.user; need(u, 'staff');
@@ -81,7 +82,7 @@ export const ALL: APIRoute = ({ params, request, locals, url }) => handle(async 
   }
   if ((mm = p.match(/^\/orders\/(\d+)\/upload$/)) && m === 'POST') {
     const o: any = await first(env.DB, 'SELECT * FROM orders WHERE id=?', Number(mm[1])); if (!o) fail(404, 'Không có đơn');
-    const fd = await request.formData(); const f = fd.get('file') as File | null; if (!f || typeof f === 'string') fail(400, 'Chưa chọn tệp');
+    const f = b.file as File | null; if (!f || typeof f === 'string') fail(400, 'Chưa chọn tệp');
     if (f.size > 95 * 1024 * 1024) fail(400, 'Tệp tối đa 95MB, tệp lớn hơn hãy dán link');
     const key = `deliveries/${o.code}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, '_').slice(-80)}`;
     await putFile(env, key, f);
@@ -166,6 +167,35 @@ export const ALL: APIRoute = ({ params, request, locals, url }) => handle(async 
     if (mm[2] === 'refund') await run(env.DB, "UPDATE payments SET status='refunded' WHERE id=? AND status='paid'", pay.id);
     if (mm[2] === 'cancel') await run(env.DB, "UPDATE payments SET status='cancelled' WHERE id=? AND status='pending'", pay.id);
     await audit(env.DB, actor, 'payment.' + mm[2], pay.code); return json({ ok: true });
+  }
+
+  // ---------------- studio templates & wallets
+  if (p === '/studio' && m === 'POST') {
+    need(u, 'admin');
+    const v = [String(b.name || '').trim(), b.kind === 'video' ? 'video' : 'image', ['promo', 'story', 'cover', 'reel'].includes(b.layout) ? b.layout : 'promo',
+      Math.min(4000, Math.max(200, Number(b.width) || 1080)), Math.min(4000, Math.max(200, Number(b.height) || 1080)), Math.max(0, Number(b.price) || 0),
+      String(b.accent || '#7c5cff'), String(b.description || ''), b.active ? 1 : 0, Number(b.sort) || 0];
+    if (!v[0]) fail(400, 'Thiếu tên mẫu');
+    if (b.id) await run(env.DB, 'UPDATE studio_templates SET name=?,kind=?,layout=?,width=?,height=?,price=?,accent=?,description=?,active=?,sort=? WHERE id=?', ...v, Number(b.id));
+    else await run(env.DB, 'INSERT INTO studio_templates (name,kind,layout,width,height,price,accent,description,active,sort) VALUES (?,?,?,?,?,?,?,?,?,?)', ...v);
+    await audit(env.DB, actor, 'studio.save', String(b.id || 'new'), { name: v[0] }); return json({ ok: true });
+  }
+  if ((mm = p.match(/^\/studio\/(\d+)\/(overlay|sample|remove-overlay)$/)) && m === 'POST') {
+    need(u, 'admin'); const id = Number(mm[1]);
+    if (mm[2] === 'remove-overlay') { await run(env.DB, 'UPDATE studio_templates SET overlay_key=NULL WHERE id=?', id); return json({ ok: true }); }
+    const f = b.file as File | null; if (!f || typeof f === 'string') fail(400, 'Chưa chọn tệp');
+    if (!/^image\//.test(f.type)) fail(400, 'Chỉ nhận ảnh (PNG nền trong suốt cho khung)');
+    const key = `studio/${id}/${mm[2]}-${Date.now()}.${(f.name.split('.').pop() || 'png').slice(0, 5)}`;
+    await putFile(env, key, f);
+    await run(env.DB, `UPDATE studio_templates SET ${mm[2] === 'overlay' ? 'overlay_key' : 'sample_key'}=? WHERE id=?`, key, id);
+    return json({ ok: true });
+  }
+  if (p === '/wallet/adjust' && m === 'POST') {
+    need(u, 'admin');
+    const target: any = await first(env.DB, 'SELECT id FROM users WHERE email=?', String(b.email || '').trim().toLowerCase()); if (!target) fail(404, 'Không có tài khoản này');
+    const amount = Math.round(Number(b.amount) || 0); if (!amount) fail(400, 'Nhập số tiền (âm để trừ)');
+    const bal = await walletApply(env, target.id, amount, 'adjust', `adj:${Date.now()}:${target.id}`, String(b.note || 'Điều chỉnh bởi ' + actor));
+    await audit(env.DB, actor, 'wallet.adjust', String(b.email), { amount }); return json({ ok: true, balance: bal });
   }
 
   // ---------------- settings & users

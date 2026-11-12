@@ -25,7 +25,23 @@ export async function setStatus(env: Env, order: any, status: string, note: stri
 }
 
 // Called once a payment is confirmed (live or demo).
+// Requests submitted but not paid within the deadline are cancelled automatically.
+let lastSweep = 0;
+export async function expireStale(env: Env, force = false) {
+  if (!force && Date.now() - lastSweep < 60_000) return; lastSweep = Date.now();
+  const rows = await all<any>(env.DB, "SELECT * FROM orders WHERE status='awaiting_payment' AND pay_deadline IS NOT NULL AND pay_deadline < datetime('now') LIMIT 50");
+  for (const o of rows) {
+    await run(env.DB, "UPDATE payments SET status='cancelled' WHERE order_id=? AND status='pending'", o.id);
+    await setStatus(env, o, 'cancelled', 'Quá hạn thanh toán, yêu cầu tự huỷ', 'system');
+  }
+}
+
 export async function onPaymentPaid(env: Env, pay: any) {
+  if (pay.kind === 'topup' && pay.user_id) {
+    const { walletApply } = await import('./wallet');
+    await walletApply(env, pay.user_id, pay.amount, 'topup', 'pay:' + pay.code, 'Nạp ví qua chuyển khoản ' + pay.code);
+    return;
+  }
   if (pay.order_id) {
     const o: any = await first(env.DB, 'SELECT * FROM orders WHERE id=?', pay.order_id);
     if (!o) return;

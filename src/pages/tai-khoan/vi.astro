@@ -1,0 +1,47 @@
+---
+import Portal from '../../layouts/Portal.astro';
+import { all } from '../../lib/db';
+import { vnd } from '../../lib/util';
+import { walletBalance } from '../../lib/wallet';
+const env = Astro.locals.runtime.env; const u = Astro.locals.user;
+const balance = await walletBalance(env, u.id);
+const tx = await all<any>(env.DB, 'SELECT * FROM wallet_tx WHERE user_id=? ORDER BY id DESC LIMIT 50', u.id);
+const min = Number(Astro.locals.settings.wallet_min_topup || 50000);
+const KIND: any = { topup: ['Nạp ví', 'good'], spend: ['Sử dụng', 'warn'], refund: ['Hoàn tiền', 'good'], adjust: ['Điều chỉnh', 'info'] };
+---
+<Portal title="Ví của tôi" tab="vi">
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:start" id="vg">
+    <div class="card">
+      <span class="muted">Số dư ví</span>
+      <div class="price grad" id="bal" style="font-size:42px">{vnd(balance)}</div>
+      <p class="muted" style="font-size:14px">Dùng số dư để tự tạo ảnh và video trong <a href="/tai-khoan/studio">Studio tạo media</a>. Nạp tối thiểu {vnd(min)}.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">{[50000, 100000, 200000, 500000].filter((v) => v >= min).map((v) => <button class="btn ghost sm amt" data-v={v}>{vnd(v)}</button>)}</div>
+      <input id="amt" type="number" min={min} step="10000" placeholder="Số tiền khác (đ)" />
+      <div class="err" id="ve"></div>
+      <button class="btn" id="topup" style="margin-top:10px;width:100%">Tạo mã QR nạp ví</button>
+      <div id="qrb" class="center" style="display:none;margin-top:16px">
+        <div class="qr"><img id="qri" alt="VietQR" /></div>
+        <p class="muted" style="font-size:13px">Nội dung: <b id="qrc"></b> · <b id="qra"></b></p>
+        <p class="muted" id="qrs"><span class="typing"><span></span><span></span><span></span></span> Đang chờ tiền về...</p>
+        <button class="btn ghost sm" id="qrdemo" style="display:none">Chế độ demo: giả lập đã chuyển khoản</button>
+      </div>
+    </div>
+    <div class="card tbl"><h3>Lịch sử ví</h3>
+      <table><tr><th>Thời gian</th><th>Loại</th><th>Nội dung</th><th>Số tiền</th><th>Số dư</th></tr>
+        {tx.map((t) => <tr><td style="white-space:nowrap">{t.created_at}</td><td><span class={`chip ${KIND[t.kind]?.[1] || ''}`}>{KIND[t.kind]?.[0] || t.kind}</span></td><td>{t.note}</td><td style={`color:${t.amount > 0 ? 'var(--good)' : 'var(--text)'}`}>{t.amount > 0 ? '+' : ''}{vnd(t.amount)}</td><td>{vnd(t.balance_after)}</td></tr>)}
+        {!tx.length && <tr><td colspan="5" class="muted">Chưa có giao dịch.</td></tr>}</table></div>
+  </div>
+  <script>
+    if (matchMedia('(max-width:860px)').matches) (document.getElementById('vg') as HTMLElement).style.gridTemplateColumns = '1fr';
+    const $ = (id: string) => document.getElementById(id)!; const amt = $('amt') as HTMLInputElement;
+    document.querySelectorAll<HTMLElement>('.amt').forEach((b) => (b.onclick = () => { amt.value = b.dataset.v!; }));
+    $('topup').onclick = async () => {
+      $('ve').textContent = ''; const r = await fetch('/api/wallet/topup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ amount: Number(amt.value) }) }); const d = await r.json();
+      if (!d.ok) { $('ve').textContent = d.error; return; }
+      const p = d.payment; $('qrb').style.display = ''; ($('qri') as HTMLImageElement).src = p.qr_url; $('qrc').textContent = p.code; $('qra').textContent = p.amount.toLocaleString('vi-VN') + 'đ'; $('topup').style.display = 'none';
+      if (p.provider === 'demo') { $('qrdemo').style.display = ''; $('qrdemo').onclick = () => fetch(`/api/payments/${p.code}/confirm`, { method: 'POST' }); }
+      (window as any).sfTrack?.('wallet_topup_start', { value: p.amount });
+      const t = setInterval(async () => { const s = await (await fetch(`/api/payments/${p.code}/status`)).json(); if (s.status === 'paid') { clearInterval(t); location.reload(); } }, 4000);
+    };
+  </script>
+</Portal>

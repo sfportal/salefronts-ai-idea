@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { currentUser, readCookie, cookie, ROLE_LEVEL } from './lib/auth';
 import { getSettings } from './lib/db';
+import { expireStale } from './lib/orders';
 
 export const onRequest = defineMiddleware(async (ctx, next) => {
   const env = ctx.locals.runtime.env;
@@ -11,6 +12,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   ctx.locals.vid = vid;
   ctx.locals.user = await currentUser(env, ctx.request);
   ctx.locals.settings = await getSettings(env.DB);
+  try { await expireStale(env); } catch {}
   const ref = ctx.url.searchParams.get('ref');
 
   const u = ctx.locals.user;

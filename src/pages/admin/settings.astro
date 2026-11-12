@@ -39,6 +39,11 @@ const has = (k: string) => !!(env as any)[k];
       <div><label>Giảm cho khách được giới thiệu (%)</label><input name="aff_discount_pct" type="number" value={s.aff_discount_pct || 5} /></div>
       <div><label>Google Analytics 4 (G-XXXX)</label><input name="ga4_id" value={s.ga4_id || ''} /></div>
     </div>
+    <div class="row">
+      <div><label>Hạn thanh toán sau khi gửi yêu cầu (ngày)</label><input name="pay_days" type="number" min="1" value={s.pay_days || 5} /></div>
+      <div><label>Cam kết liên hệ khách (giờ)</label><input name="contact_hours" type="number" min="1" value={s.contact_hours || 8} /></div>
+      <div><label>Nạp ví tối thiểu (đ)</label><input name="wallet_min_topup" type="number" step="10000" value={s.wallet_min_topup || 50000} /></div>
+    </div>
     <label>Tiêu đề trang chủ</label><input name="hero_title" value={s.hero_title || ''} />
     <button class="btn" style="margin-top:14px">Lưu cài đặt</button>
   </form>

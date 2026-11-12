@@ -27,8 +27,8 @@ const ICON: any = { github: '🐙', web: '🌐', extension: '🧩', media: '🎬
 
   {['chatting', 'mockup', 'awaiting_payment', 'quote_pending'].includes(o.status) && (
     <div class="card" style="margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <span>{o.status === 'quote_pending' ? 'Salefronts đang báo giá phần ngoài mẫu. Bạn sẽ nhận thông báo khi có giá.' : 'Yêu cầu chưa hoàn tất. Tiếp tục để gửi cho Salefronts.'}</span>
-      <a class="btn sm" href={`/bat-dau?order=${o.code}`}>Tiếp tục</a>
+      <span>{o.status === 'quote_pending' ? 'Salefronts đang báo giá phần ngoài mẫu. Bạn sẽ nhận thông báo khi có giá.' : o.status === 'awaiting_payment' ? <>Đã gửi yêu cầu. Nhân viên sẽ liên hệ bạn trong 8 giờ làm việc. Hạn thanh toán: <b>{o.pay_deadline ? new Date(o.pay_deadline.replace(' ', 'T') + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : ''}</b>, quá hạn yêu cầu tự huỷ.</> : 'Yêu cầu chưa hoàn tất. Tiếp tục để gửi cho Salefronts.'}</span>
+      <a class="btn sm" href={`/bat-dau?order=${o.code}`}>{o.status === 'awaiting_payment' ? 'Tạo mã QR thanh toán' : 'Tiếp tục'}</a>
     </div>)}
   {o.status === 'rejected' && <div class="card" style="border-color:#ef444466;margin-bottom:18px"><b>Yêu cầu bị trả lại:</b> {o.reject_reason}<br /><span class="muted">Số tiền đã thanh toán sẽ được hoàn trong 3 ngày làm việc.</span></div>}
 
@@ -59,13 +59,19 @@ const ICON: any = { github: '🐙', web: '🌐', extension: '🧩', media: '🎬
         <table><tbody>{payRows.map(([k, v]) => <tr><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div>
       <div class="card"><h3>Tiến trình</h3>
         {events.map((e) => <div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="font-size:13px" class="muted">{e.created_at}</div><div>{e.note}</div></div>)}</div>
-      {files.filter((f) => f.kind === 'upload').length > 0 && <div class="card"><h3>Tư liệu đã gửi</h3>{files.filter((f) => f.kind === 'upload').map((f) => <div><a href={`/api/files/${f.id}`}>📎 {f.name}</a></div>)}</div>}
+      <div class="card"><h3>Tư liệu đã gửi</h3>{files.filter((f) => f.kind === 'upload').map((f) => <div><a href={`/api/files/${f.id}`}>📎 {f.name}</a></div>)}
+        {!files.some((f) => f.kind === 'upload') && <p class="muted" style="font-size:13px">Chưa có tệp nào.</p>}
+        {!['cancelled', 'rejected', 'delivered'].includes(o.status) && <label class="btn ghost sm" style="cursor:pointer;margin-top:8px">📎 Gửi thêm tư liệu<input type="file" id="moreup" multiple style="display:none" /></label>}<div class="muted" id="upst" style="font-size:13px"></div></div>
       <details class="card"><summary style="cursor:pointer"><b>Lịch sử chat với AI</b> ({msgs.length})</summary>
         <div class="chat" style="height:auto;max-height:420px;margin-top:10px"><div class="log">{msgs.map((m) => <div class={`msg ${m.role}`}>{m.content}</div>)}</div></div></details>
     </div>
   </div>
   <script define:vars={{ code: o.code }}>
     if (matchMedia('(max-width:860px)').matches) document.getElementById('dg').style.gridTemplateColumns = '1fr';
+    const mu = document.getElementById('moreup');
+    if (mu) mu.onchange = async () => { const st = document.getElementById('upst');
+      for (const f of mu.files) { st.textContent = 'Đang tải ' + f.name + '...'; const fd = new FormData(); fd.append('file', f); const r = await fetch(`/api/orders/${code}/upload`, { method: 'POST', body: fd }); const d = await r.json(); if (!d.ok) { st.textContent = '⚠ ' + d.error; return; } }
+      location.reload(); };
     const pb = document.getElementById('paybal');
     if (pb) pb.onclick = async () => {
       const r = await fetch(`/api/orders/${code}/pay-balance`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); const d = await r.json();

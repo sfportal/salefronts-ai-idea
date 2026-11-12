@@ -2,7 +2,7 @@
 import Base from './Base.astro';
 interface Props { title: string; tab: string }
 const { title, tab } = Astro.props; const u = Astro.locals.user;
-const T = [['don', '/tai-khoan', 'Đơn của tôi'], ['tv', '/tai-khoan?tab=tv', 'Lịch tư vấn'], ['gd', '/tai-khoan?tab=gd', 'Giao dịch'], ['ls', '/tai-khoan?tab=ls', 'Lịch sử hoạt động'], ['gt', '/tai-khoan/gioi-thieu', 'Giới thiệu bạn bè']];
+const T = [['don', '/tai-khoan', 'Đơn của tôi'], ['tv', '/tai-khoan?tab=tv', 'Lịch tư vấn'], ['gd', '/tai-khoan?tab=gd', 'Giao dịch'], ['ls', '/tai-khoan?tab=ls', 'Lịch sử hoạt động'], ['vi', '/tai-khoan/vi', 'Ví'], ['studio', '/tai-khoan/studio', 'Studio tạo media'], ['gt', '/tai-khoan/gioi-thieu', 'Giới thiệu bạn bè']];
 ---
 <Base title={title}>
   <section style="padding-top:44px"><div class="wrap">

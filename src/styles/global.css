@@ -182,3 +182,8 @@ footer.site{border-top:1px solid var(--line);padding:50px 0;color:var(--muted);f
 .tabs a.on{background:var(--grad);color:#fff;border-color:transparent}
 dialog{background:#14141f;color:var(--text);border:1px solid var(--line);border-radius:18px;padding:24px;max-width:min(720px,94vw);width:100%}
 dialog::backdrop{background:#000a;backdrop-filter:blur(4px)}
+/* request form + drop zones */
+.ff.miss textarea{border-color:#f59e0b99}
+#fform textarea,#formcard textarea{min-height:42px;resize:vertical}
+.drop{border:1.5px dashed var(--line);transition:border-color .2s,background .2s}
+.drop.over{border-color:var(--a1);background:#7c5cff14}

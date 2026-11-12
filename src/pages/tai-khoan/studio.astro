@@ -1,0 +1,212 @@
+---
+import Portal from '../../layouts/Portal.astro';
+import { all } from '../../lib/db';
+import { vnd } from '../../lib/util';
+import { walletBalance } from '../../lib/wallet';
+const env = Astro.locals.runtime.env; const u = Astro.locals.user;
+const tpls = await all<any>(env.DB, 'SELECT id,name,kind,layout,width,height,price,accent,description,overlay_key IS NOT NULL has_overlay, sample_key IS NOT NULL has_sample FROM studio_templates WHERE active=1 ORDER BY sort, id');
+const balance = await walletBalance(env, u.id);
+const exportsList = await all<any>(env.DB, 'SELECT e.*, t.name FROM studio_exports e JOIN studio_templates t ON t.id=e.template_id WHERE e.user_id=? ORDER BY e.id DESC LIMIT 10', u.id);
+---
+<Portal title="Studio tạo media" tab="studio">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <p class="muted" style="margin:0;max-width:680px">Tự tạo ảnh và video ngắn từ ảnh của bạn theo mẫu có sẵn. Xem trước miễn phí, chỉ trừ tiền ví khi bấm Xuất file.</p>
+    <span>Số dư: <b id="bal">{vnd(balance)}</b> <a class="btn ghost sm" href="/tai-khoan/vi">Nạp ví</a></span>
+  </div>
+  {!tpls.length && <div class="card muted">Chưa có mẫu nào được bật.</div>}
+  <div class="grid g4" id="tlist" style="margin-bottom:18px">
+    {tpls.map((t, i) => <div class={`card tpl kind ${i === 0 ? 'sel' : ''}`} data-id={t.id} style="padding:14px;cursor:pointer">
+      {t.has_sample ? <img src={`/api/studio/${t.id}/sample`} alt="" style="width:100%;height:90px;object-fit:cover;border-radius:10px" /> : <div style={`height:90px;border-radius:10px;background:linear-gradient(135deg,${t.accent},#14141f);display:grid;place-items:center;font-size:28px`}>{t.kind === 'video' ? '🎬' : '🖼️'}</div>}
+      <b style="display:block;margin-top:8px">{t.name}</b><span class="muted" style="font-size:12px">{t.width}×{t.height} · {t.kind === 'video' ? 'Video' : 'Ảnh'} · {vnd(t.price)}/lần xuất</span></div>)}
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start" id="sg">
+    <div class="card">
+      <p class="muted" style="font-size:13px;margin-top:0" id="tdesc"></p>
+      <label>Ảnh của bạn (sản phẩm, không gian, khách hàng) *</label>
+      <div class="drop" id="dz" style="padding:14px;border-radius:14px"><label class="btn ghost sm" style="cursor:pointer">Chọn ảnh<input type="file" id="imgs" accept="image/*" multiple style="display:none" /></label> <span class="muted" style="font-size:13px">hoặc kéo thả vào đây. Video dùng 2 đến 10 ảnh.</span>
+        <div id="thumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div></div>
+      <label>Logo (PNG nền trong suốt càng đẹp)</label><input type="file" id="logo" accept="image/*" />
+      <label>Tiêu đề</label><input id="h" maxlength="80" placeholder="Ví dụ: Sầu riêng Ri6 chín cây" />
+      <label>Mô tả ngắn (video: mỗi dòng là chữ của một cảnh)</label><textarea id="sub" maxlength="400" placeholder="Giao nhanh 2h nội thành&#10;Cam kết cơm vàng hạt lép"></textarea>
+      <div class="row"><div><label>Giá / ưu đãi</label><input id="price" maxlength="30" placeholder="199.000đ/kg" /></div><div><label>Lời kêu gọi</label><input id="cta" maxlength="30" placeholder="Nhắn Zalo đặt ngay" /></div></div>
+      <div class="row"><div><label>Màu chủ đạo</label><input id="accent" type="color" style="height:46px" /></div><div><label>Liên hệ (hiện cuối)</label><input id="contact" maxlength="40" placeholder="Zalo 09xx xxx xxx" /></div></div>
+      <div class="err" id="se"></div>
+      <button class="btn" id="exp" style="width:100%;margin-top:12px">Xuất file</button>
+      <p class="muted" style="font-size:12px;margin-bottom:0">Ảnh xử lý ngay trên trình duyệt của bạn, không tải lên máy chủ. Video xuất định dạng MP4 hoặc WebM tuỳ trình duyệt (Chrome khuyên dùng).</p>
+    </div>
+    <div class="card center">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Xem trước</b><button class="btn ghost sm" id="play" style="display:none">▶ Phát lại</button></div>
+      <canvas id="cv" style="max-width:100%;max-height:70vh;border-radius:12px;background:#000"></canvas>
+      <p class="muted" id="st" style="font-size:13px"></p>
+    </div>
+  </div>
+  {exportsList.length > 0 && <div class="card tbl" style="margin-top:18px"><h3>Lần xuất gần đây</h3><table>{exportsList.map((e) => <tr><td>{e.created_at}</td><td>{e.name}</td><td>{e.title}</td><td>{vnd(e.price)}</td></tr>)}</table></div>}
+
+  <script define:vars={{ tpls }} is:inline>window.__ST = tpls;</script>
+  <script>
+    const tpls: any[] = (window as any).__ST || [];
+    const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+    if (matchMedia('(max-width:900px)').matches) $('sg').style.gridTemplateColumns = '1fr';
+    let tpl: any = tpls[0]; const imgs: HTMLImageElement[] = []; let logo: HTMLImageElement | null = null; let overlay: HTMLImageElement | null = null;
+    const cv = $<HTMLCanvasElement>('cv'); const ctx = cv.getContext('2d')!;
+    const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+    const fileImg = (f: File) => loadImg(URL.createObjectURL(f));
+    const val = (id: string) => ($<HTMLInputElement>(id).value || '').trim();
+
+    // ---------- drawing helpers
+    const cover = (c: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, zoom = 1, pan = 0) => {
+      const r = Math.max(w / img.width, h / img.height) * zoom; const iw = img.width * r, ih = img.height * r;
+      c.drawImage(img, x + (w - iw) / 2 + pan * (iw - w) / 2, y + (h - ih) / 2, iw, ih);
+    };
+    const wrap = (c: CanvasRenderingContext2D, text: string, maxW: number) => {
+      const words = text.split(/\s+/); const lines: string[] = []; let line = '';
+      for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+      if (line) lines.push(line); return lines;
+    };
+    const text = (c: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, opts: any = {}) => {
+      if (!s) return y; c.font = `${opts.weight || 800} ${size}px Inter, system-ui, sans-serif`; c.fillStyle = opts.color || '#fff'; c.textAlign = opts.align || 'left'; c.textBaseline = 'top';
+      if (opts.shadow) { c.shadowColor = '#0009'; c.shadowBlur = size / 3; }
+      for (const l of wrap(c, s, maxW).slice(0, opts.max || 4)) { c.fillText(l, x, y); y += size * 1.18; }
+      c.shadowBlur = 0; return y;
+    };
+    const pill = (c: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, bg: string, align = 'left') => {
+      if (!s) return; c.font = `800 ${size}px Inter, system-ui, sans-serif`; const w = c.measureText(s).width + size * 1.6, h = size * 2;
+      const px = align === 'center' ? x - w / 2 : x; c.fillStyle = bg; c.beginPath(); (c as any).roundRect(px, y, w, h, h / 2); c.fill();
+      c.fillStyle = '#fff'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(s, px + size * 0.8, y + h / 2);
+    };
+    const drawLogo = (c: CanvasRenderingContext2D, x: number, y: number, h: number, align = 'left') => {
+      if (!logo) return; const w = logo.width * (h / logo.height); c.drawImage(logo, align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y, w, h);
+    };
+    const grad = (c: CanvasRenderingContext2D, y0: number, y1: number, color: string, W: number) => { const g = c.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, color + '00'); g.addColorStop(1, color + 'ee'); c.fillStyle = g; c.fillRect(0, y0, W, y1 - y0); };
+    const placeholder = (c: CanvasRenderingContext2D, W: number, H: number, accent: string) => { const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, accent); g.addColorStop(1, '#111'); c.fillStyle = g; c.fillRect(0, 0, W, H); };
+
+    // ---------- static layouts
+    function drawStatic(c: CanvasRenderingContext2D, W: number, H: number) {
+      const A = val('accent') || tpl.accent; const u = W / 1080; const img = imgs[0];
+      c.clearRect(0, 0, W, H);
+      if (tpl.layout === 'cover') {
+        if (img) cover(c, img, 0, 0, W * 0.55, H); else placeholder(c, W * 0.55, H, A);
+        c.fillStyle = A; c.fillRect(W * 0.55, 0, W * 0.45, H); const x = W * 0.59, mw = W * 0.37;
+        drawLogo(c, x, H * 0.08, 70 * u);
+        let y = text(c, val('h') || 'Tiêu đề của bạn', x, H * 0.08 + (logo ? 100 * u : 0), mw, 64 * u, { max: 3 });
+        y = text(c, val('sub').split('\n')[0], x, y + 14 * u, mw, 30 * u, { weight: 500, color: '#ffffffdd', max: 3 });
+        if (val('price')) { y = text(c, val('price'), x, y + 18 * u, mw, 48 * u, { color: '#fff' }); }
+        pill(c, val('cta'), x, H - 130 * u, 30 * u, '#111');
+      } else {
+        if (img) cover(c, img, 0, 0, W, H); else placeholder(c, W, H, A);
+        const story = tpl.layout === 'story';
+        grad(c, H * (story ? 0.45 : 0.4), H, '#000000', W);
+        c.fillStyle = A; c.fillRect(0, H - 14 * u, W, 14 * u);
+        drawLogo(c, 60 * u, 60 * u, (story ? 110 : 90) * u);
+        const pad = 64 * u, mw = W - pad * 2;
+        let y = H * (story ? 0.62 : 0.56);
+        if (val('price')) pill(c, val('price'), pad, y - 110 * u, 38 * u, A);
+        y = text(c, val('h') || 'Tiêu đề của bạn', pad, y, mw, (story ? 96 : 84) * u, { shadow: true, max: 3 });
+        y = text(c, val('sub').split('\n').join(' · '), pad, y + 16 * u, mw, 38 * u, { weight: 500, color: '#ffffffdd', max: 3 });
+        pill(c, val('cta'), pad, Math.min(H - 150 * u, y + 30 * u), 36 * u, A);
+        if (val('contact')) text(c, val('contact'), W - pad, H - 80 * u, mw, 30 * u, { align: 'right', weight: 600, color: '#ffffffcc', max: 1 });
+      }
+      if (overlay) c.drawImage(overlay, 0, 0, W, H);
+    }
+
+    // ---------- video (slideshow) frame at time t (seconds)
+    const SLIDE = 2.6, END = 3;
+    const duration = () => Math.max(1, imgs.length) * SLIDE + END;
+    function drawReel(c: CanvasRenderingContext2D, W: number, H: number, t: number) {
+      const A = val('accent') || tpl.accent; const u = W / 1080; const n = Math.max(1, imgs.length); const lines = val('sub').split('\n').filter(Boolean);
+      c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+      const slideT = n * SLIDE;
+      if (t < slideT) {
+        const i = Math.floor(t / SLIDE), p = (t % SLIDE) / SLIDE;
+        const drawSlide = (k: number, pp: number, alpha: number) => { c.globalAlpha = alpha; if (imgs[k]) cover(c, imgs[k], 0, 0, W, H, 1.06 + pp * 0.1, (k % 2 ? -1 : 1) * (pp - 0.5) * 0.3); else placeholder(c, W, H, A); c.globalAlpha = 1; };
+        drawSlide(i, p, 1);
+        if (p > 0.85 && i + 1 < n) drawSlide(i + 1, 0, (p - 0.85) / 0.15);
+        grad(c, H * 0.5, H, '#000000', W);
+        drawLogo(c, 60 * u, 70 * u, 90 * u);
+        const cap = i === 0 ? (val('h') || 'Tiêu đề của bạn') : (lines[i - 1] || lines[(i - 1) % Math.max(1, lines.length)] || val('h'));
+        const ap = Math.min(1, p * 4); c.globalAlpha = ap;
+        const y0 = H * 0.66 + (1 - ap) * 40 * u;
+        const y = text(c, cap || '', 64 * u, y0, W - 128 * u, (i === 0 ? 96 : 76) * u, { shadow: true, max: 3 });
+        if (i === 0 && val('price')) pill(c, val('price'), 64 * u, y + 24 * u, 38 * u, A);
+        c.globalAlpha = 1;
+        c.fillStyle = A; c.fillRect(0, H - 12 * u, W * ((t) / duration()), 12 * u);
+      } else {
+        const p = Math.min(1, (t - slideT) / 0.6);
+        c.fillStyle = A; c.fillRect(0, 0, W, H); c.globalAlpha = p;
+        drawLogo(c, W / 2, H * 0.28, 220 * u, 'center');
+        let y = text(c, val('h') || '', W / 2, H * (logo ? 0.45 : 0.36), W - 160 * u, 80 * u, { align: 'center', max: 3 });
+        pill(c, val('cta') || 'Liên hệ ngay', W / 2, y + 40 * u, 44 * u, '#111', 'center');
+        text(c, val('contact'), W / 2, y + 180 * u, W - 160 * u, 40 * u, { align: 'center', weight: 600, max: 2 });
+        c.globalAlpha = 1;
+      }
+      if (overlay) c.drawImage(overlay, 0, 0, W, H);
+    }
+
+    // ---------- preview
+    let raf = 0, t0 = 0;
+    function preview() {
+      cancelAnimationFrame(raf); const scale = Math.min(1, 720 / Math.max(tpl.width, tpl.height));
+      cv.width = Math.round(tpl.width * scale); cv.height = Math.round(tpl.height * scale);
+      if (tpl.kind === 'video') {
+        $('play').style.display = ''; t0 = performance.now();
+        const loop = (now: number) => { const t = (now - t0) / 1000; drawReel(ctx, cv.width, cv.height, t % duration()); raf = requestAnimationFrame(loop); };
+        raf = requestAnimationFrame(loop); $('st').textContent = `Video ${tpl.width}×${tpl.height}, dài khoảng ${Math.round(duration())} giây`;
+      } else { $('play').style.display = 'none'; drawStatic(ctx, cv.width, cv.height); $('st').textContent = `Ảnh ${tpl.width}×${tpl.height}`; }
+    }
+    $('play').onclick = () => { t0 = performance.now(); };
+    async function selectTpl(id: number) {
+      tpl = tpls.find((x) => x.id === id) || tpls[0]; if (!tpl) return;
+      document.querySelectorAll<HTMLElement>('#tlist [data-id]').forEach((el) => el.classList.toggle('sel', Number(el.dataset.id) === tpl.id));
+      $('tdesc').textContent = tpl.description || ''; $<HTMLInputElement>('accent').value = tpl.accent || '#7c5cff';
+      overlay = tpl.has_overlay ? await loadImg(`/api/studio/${tpl.id}/overlay`).catch(() => null) : null;
+      preview();
+    }
+    document.querySelectorAll<HTMLElement>('#tlist [data-id]').forEach((el) => (el.onclick = () => selectTpl(Number(el.dataset.id))));
+    ['h', 'sub', 'price', 'cta', 'accent', 'contact'].forEach((id) => $(id).addEventListener('input', () => { if (tpl?.kind !== 'video') preview(); }));
+    const addImgs = async (files: FileList | File[]) => {
+      for (const f of Array.from(files)) { if (!f.type.startsWith('image/') || imgs.length >= 10) continue; const im = await fileImg(f); imgs.push(im); }
+      $('thumbs').innerHTML = ''; imgs.forEach((im, i) => { const d = document.createElement('div'); d.style.cssText = 'position:relative'; const t = im.cloneNode() as HTMLImageElement; t.style.cssText = 'width:56px;height:56px;object-fit:cover;border-radius:8px';
+        const x = document.createElement('button'); x.textContent = '✕'; x.className = 'btn ghost sm'; x.style.cssText = 'position:absolute;top:-6px;right:-6px;padding:0 6px;font-size:11px'; x.onclick = () => { imgs.splice(i, 1); addImgs([]); };
+        d.append(t, x); $('thumbs').appendChild(d); });
+      preview();
+    };
+    $<HTMLInputElement>('imgs').onchange = async (e) => { await addImgs((e.target as HTMLInputElement).files || []); (e.target as HTMLInputElement).value = ''; };
+    const dz = $('dz'); dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('over'); }); dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+    dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('over'); addImgs((e as DragEvent).dataTransfer?.files || []); });
+    $<HTMLInputElement>('logo').onchange = async (e) => { const f = (e.target as HTMLInputElement).files?.[0]; logo = f ? await fileImg(f) : null; preview(); };
+
+    // ---------- export (charge wallet, then render full size and download)
+    const download = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+    const slug = () => (val('h') || tpl.name).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40);
+    $('exp').onclick = async () => {
+      $('se').textContent = ''; if (!tpl) return;
+      if (!imgs.length) { $('se').textContent = 'Bạn thêm ít nhất 1 ảnh nhé'; return; }
+      if (tpl.kind === 'video' && imgs.length < 2) { $('se').textContent = 'Video cần ít nhất 2 ảnh'; return; }
+      if (tpl.kind === 'video' && !(window as any).MediaRecorder) { $('se').textContent = 'Trình duyệt này chưa hỗ trợ xuất video, bạn dùng Chrome trên máy tính nhé'; return; }
+      const b = $<HTMLButtonElement>('exp'); b.disabled = true; b.textContent = 'Đang xử lý...';
+      try {
+        const r = await fetch('/api/wallet/studio-export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ template_id: tpl.id, title: val('h') }) }); const d = await r.json();
+        if (!d.ok) { $('se').innerHTML = d.error + (r.status === 402 ? ' <a href="/tai-khoan/vi">Nạp ví →</a>' : ''); return; }
+        if (d.balance !== null && d.balance !== undefined) $('bal').textContent = Number(d.balance).toLocaleString('vi-VN') + 'đ';
+        const out = document.createElement('canvas'); out.width = tpl.width; out.height = tpl.height; const oc = out.getContext('2d')!;
+        if (tpl.kind !== 'video') {
+          drawStatic(oc, out.width, out.height);
+          out.toBlob((blob) => { if (blob) download(blob, `${slug()}_${tpl.width}x${tpl.height}.png`); }, 'image/png');
+        } else {
+          const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+          const stream = out.captureStream(30); const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 }); const chunks: Blob[] = [];
+          rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+          const finished = new Promise<void>((res) => (rec.onstop = () => res()));
+          const total = duration(); rec.start(250); const start = performance.now();
+          await new Promise<void>((res) => { const step = () => { const t = (performance.now() - start) / 1000; drawReel(oc, out.width, out.height, Math.min(t, total)); b.textContent = `Đang ghi video ${Math.min(100, Math.round((t / total) * 100))}%...`; if (t < total) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });
+          rec.stop(); await finished;
+          download(new Blob(chunks, { type: mime.split(';')[0] }), `${slug()}_9x16.${mime.includes('mp4') ? 'mp4' : 'webm'}`);
+        }
+        (window as any).sfTrack?.('studio_export', { template: tpl.id });
+        $('st').textContent = 'Đã xuất file, kiểm tra thư mục Tải xuống.';
+      } catch (err: any) { $('se').textContent = err.message || 'Lỗi xuất file'; }
+      finally { b.disabled = false; b.textContent = 'Xuất file'; }
+    };
+    if (tpl) selectTpl(tpl.id);
+  </script>
+</Portal>

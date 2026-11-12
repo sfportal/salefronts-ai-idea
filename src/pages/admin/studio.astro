@@ -1,0 +1,61 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+const env = Astro.locals.runtime.env;
+const tpls = await all<any>(env.DB, 'SELECT t.*, (SELECT COUNT(*) FROM studio_exports e WHERE e.template_id=t.id) uses, (SELECT COALESCE(SUM(price),0) FROM studio_exports e WHERE e.template_id=t.id) revenue FROM studio_templates t ORDER BY sort, id');
+const ed = Astro.url.searchParams.get('edit');
+const e: any = ed === 'new' ? { kind: 'image', layout: 'promo', width: 1080, height: 1080, price: 20000, accent: '#7c5cff', active: 1, sort: 0 } : ed ? await first(env.DB, 'SELECT * FROM studio_templates WHERE id=?', Number(ed)) : null;
+const wallets = await all<any>(env.DB, 'SELECT u.email, u.name, u.wallet_balance, (SELECT COALESCE(SUM(amount),0) FROM wallet_tx w WHERE w.user_id=u.id AND w.kind=\'topup\') topup, (SELECT COALESCE(-SUM(amount),0) FROM wallet_tx w WHERE w.user_id=u.id AND w.kind=\'spend\') spent FROM users u WHERE u.wallet_balance<>0 OR EXISTS (SELECT 1 FROM wallet_tx w WHERE w.user_id=u.id) ORDER BY u.wallet_balance DESC LIMIT 100');
+const tx = await all<any>(env.DB, 'SELECT w.*, u.email FROM wallet_tx w JOIN users u ON u.id=w.user_id ORDER BY w.id DESC LIMIT 30');
+const LAYOUT: any = { promo: 'Banner vuông', story: 'Story dọc', cover: 'Ảnh bìa ngang', reel: 'Video slideshow' };
+---
+<Admin title="Studio & Ví" active="studio">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h1>Studio & Ví</h1><a class="btn sm" href="?edit=new">+ Mẫu studio mới</a></div>
+  <p class="muted">Mẫu để khách tự tạo ảnh và video trong tài khoản, trả bằng số dư ví. Mỗi mẫu có thể kèm một ảnh khung PNG nền trong suốt (đặt đè lên ảnh xuất ra, đúng kích thước mẫu) và một ảnh xem trước.</p>
+  {e && (
+    <form class="card" id="sf" style="margin-bottom:18px">
+      <h3>{e.id ? 'Sửa mẫu: ' + e.name : 'Mẫu mới'}</h3><input type="hidden" name="id" value={e.id || ''} />
+      <div class="row">
+        <div><label>Tên mẫu</label><input name="name" value={e.name || ''} required /></div>
+        <div><label>Loại</label><select name="kind"><option value="image" selected={e.kind === 'image'}>Ảnh</option><option value="video" selected={e.kind === 'video'}>Video</option></select></div>
+        <div><label>Bố cục</label><select name="layout">{Object.entries(LAYOUT).map(([k, v]: any) => <option value={k} selected={e.layout === k}>{v}</option>)}</select></div>
+      </div>
+      <div class="row">
+        <div><label>Rộng (px)</label><input name="width" type="number" value={e.width} /></div>
+        <div><label>Cao (px)</label><input name="height" type="number" value={e.height} /></div>
+        <div><label>Giá mỗi lần xuất (đ)</label><input name="price" type="number" step="1000" value={e.price} /></div>
+        <div><label>Màu mặc định</label><input name="accent" type="color" value={e.accent} style="height:46px" /></div>
+        <div><label>Thứ tự</label><input name="sort" type="number" value={e.sort} /></div>
+      </div>
+      <label>Mô tả (khách thấy)</label><textarea name="description">{e.description || ''}</textarea>
+      <label style="display:flex;gap:10px;color:var(--text)"><input type="checkbox" name="active" checked={!!e.active} style="width:auto" /> Đang bật</label>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn">Lưu mẫu</button><a class="btn ghost" href="/admin/studio">Huỷ</a></div>
+      {e.id && (
+        <div class="row" style="margin-top:16px;align-items:end">
+          <div><label>Ảnh khung PNG (đè lên trên) {e.overlay_key ? '✓ đã có' : ''}</label><input type="file" accept="image/png,image/webp" data-up="overlay" /></div>
+          <div><label>Ảnh xem trước {e.sample_key ? '✓ đã có' : ''}</label><input type="file" accept="image/*" data-up="sample" /></div>
+          {e.overlay_key && <div><button type="button" class="btn ghost sm" id="rmov">Bỏ ảnh khung</button></div>}
+        </div>)}
+    </form>)}
+  <div class="card tbl" style="margin-bottom:18px"><table><tr><th>Mẫu</th><th>Loại</th><th>Kích thước</th><th>Giá</th><th>Lượt xuất</th><th>Doanh thu</th><th>Trạng thái</th><th></th></tr>
+    {tpls.map((t) => <tr><td><span style={`display:inline-block;width:12px;height:12px;border-radius:4px;background:${t.accent};margin-right:6px`}></span><b>{t.name}</b>{t.overlay_key && <span class="chip" style="margin-left:6px">khung</span>}</td><td>{t.kind === 'video' ? 'Video' : 'Ảnh'} · {LAYOUT[t.layout]}</td><td>{t.width}×{t.height}</td><td>{vnd(t.price)}</td><td>{t.uses}</td><td>{vnd(t.revenue)}</td><td><span class={`chip ${t.active ? 'good' : 'bad'}`}>{t.active ? 'Bật' : 'Tắt'}</span></td><td><a class="btn sm ghost" href={`?edit=${t.id}`}>Sửa</a></td></tr>)}</table></div>
+
+  <div class="grid g2" style="align-items:start">
+    <div class="card tbl"><h3>Ví khách hàng</h3>
+      <table><tr><th>Tài khoản</th><th>Số dư</th><th>Đã nạp</th><th>Đã dùng</th></tr>{wallets.map((w) => <tr><td>{w.email}<br /><span class="muted">{w.name}</span></td><td><b>{vnd(w.wallet_balance)}</b></td><td>{vnd(w.topup)}</td><td>{vnd(w.spent)}</td></tr>)}
+      {!wallets.length && <tr><td colspan="4" class="muted">Chưa có ví nào phát sinh.</td></tr>}</table>
+      <form class="toolbar" style="margin-top:12px" onsubmit="event.preventDefault(); adm('/wallet/adjust', formObj(this))"><input name="email" type="email" required placeholder="email khách" /><input name="amount" type="number" required placeholder="+50000 hoặc -20000" /><input name="note" placeholder="Lý do" /><button class="btn sm">Điều chỉnh ví</button></form>
+    </div>
+    <div class="card tbl"><h3>Giao dịch ví gần đây</h3><table>{tx.map((t) => <tr><td style="font-size:12px" class="muted">{t.created_at}</td><td>{t.email}</td><td>{t.note}</td><td style={`color:${t.amount > 0 ? 'var(--good)' : 'var(--text)'}`}>{t.amount > 0 ? '+' : ''}{vnd(t.amount)}</td></tr>)}{!tx.length && <tr><td class="muted">Chưa có.</td></tr>}</table></div>
+  </div>
+  <script>
+    const sf = document.getElementById('sf') as HTMLFormElement | null;
+    sf?.addEventListener('submit', async (e) => { e.preventDefault(); await (window as any).adm('/studio', (window as any).formObj(sf), { reload: false }); location.href = '/admin/studio'; });
+    document.querySelectorAll<HTMLInputElement>('[data-up]').forEach((inp) => inp.addEventListener('change', async () => {
+      const f = inp.files?.[0]; if (!f) return; const id = (sf!.querySelector('[name=id]') as HTMLInputElement).value; const fd = new FormData(); fd.append('file', f);
+      await (window as any).adm(`/studio/${id}/${inp.dataset.up}`, fd);
+    }));
+    document.getElementById('rmov')?.addEventListener('click', () => { const id = (sf!.querySelector('[name=id]') as HTMLInputElement).value; (window as any).adm(`/studio/${id}/remove-overlay`, {}); });
+  </script>
+</Admin>
