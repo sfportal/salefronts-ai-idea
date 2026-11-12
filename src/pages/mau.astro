@@ -1,0 +1,38 @@
+---
+import Base from '../layouts/Base.astro';
+import { all } from '../lib/db';
+import { vnd, parseJSON } from '../lib/util';
+const env = Astro.locals.runtime.env;
+const kind = Astro.url.searchParams.get('kind') || '';
+const tpls = await all<any>(env.DB, `SELECT * FROM templates WHERE active=1 ${kind ? 'AND kind=?' : ''} ORDER BY kind, sort`, ...(kind ? [kind] : []));
+const K: any = { web: 'Web', extension: 'Extension', media: 'Media' };
+---
+<Base title="Kho mẫu">
+  <section style="padding-top:60px">
+    <div class="wrap">
+      <span class="eyebrow">Kho mẫu</span>
+      <h1 style="font-size:clamp(32px,5vw,54px);margin-top:14px">Làm trên mẫu đã chạy thật, <span class="grad">chỉnh theo bạn</span></h1>
+      <p class="muted">Mỗi mẫu ghi rõ những điểm chỉnh được. Ý tưởng khác hẳn mẫu vẫn nhận, phần khác được báo giá riêng.</p>
+      <div class="tabs" style="margin-top:20px">
+        <a href="/mau" class={!kind ? 'on' : ''}>Tất cả</a>{Object.entries(K).map(([k, v]) => <a href={`/mau?kind=${k}`} class={kind === k ? 'on' : ''}>{v as string}</a>)}
+      </div>
+      <div class="grid g3">
+        {tpls.map((t, i) => (
+          <div class={`card kind rv d${(i % 3) + 1}`}>
+            <div class="sw" style={`height:110px;border-radius:12px;margin-bottom:12px;background:linear-gradient(135deg,${t.accent},#14141f)`}></div>
+            <span class="chip">{K[t.kind]}</span> <span class="chip">{t.days} ngày</span>
+            <h3 style="margin-top:10px">{t.name}</h3>
+            <p class="muted" style="font-size:14px">{t.summary}</p>
+            <p style="font-size:13px" class="muted">Phù hợp: {t.industries}</p>
+            <details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:14px">Điểm chỉnh được</summary>
+              <ul style="font-size:13px;padding-left:18px">{(parseJSON(t.options, []) as any[]).map((o) => <li>{o.label}{o.price ? ` (+${vnd(o.price)})` : ''}</li>)}</ul></details>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <b>từ {vnd(t.base_price)}</b>
+              <span style="display:flex;gap:6px">{t.demo_url && <a class="btn sm ghost" href={t.demo_url} target="_blank">Demo</a>}<a class="btn sm" href={`/bat-dau?kind=${t.kind}&tpl=${t.slug}`}>Dùng mẫu này</a></span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,36 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all } from '../../lib/db';
+const env = Astro.locals.runtime.env;
+const tab = Astro.url.searchParams.get('tab') || 'chat'; const sid = Number(Astro.url.searchParams.get('s') || 0);
+const sessions = tab === 'chat' ? await all<any>(env.DB, "SELECT s.*, u.email, (SELECT content FROM support_messages m WHERE m.session_id=s.id ORDER BY id DESC LIMIT 1) last, (SELECT COUNT(*) FROM support_messages m WHERE m.session_id=s.id) n FROM support_sessions s LEFT JOIN users u ON u.id=s.user_id ORDER BY (s.status='needs_human') DESC, s.updated_at DESC LIMIT 100") : [];
+const msgs = sid ? await all<any>(env.DB, 'SELECT * FROM support_messages WHERE session_id=? ORDER BY id', sid) : [];
+const bookings = tab === 'tv' ? await all<any>(env.DB, 'SELECT b.*, l.name, l.phone, l.company FROM bookings b JOIN leads l ON l.id=b.lead_id ORDER BY (b.status=\'paid\') DESC, b.id DESC LIMIT 100') : [];
+const SS: any = { open: ['Bot đang trả lời', 'info'], needs_human: ['Cần người hỗ trợ', 'warn'], closed: ['Đã đóng', 'good'] };
+const BK: any = { awaiting_payment: 'Chờ thanh toán', paid: 'Đã thanh toán, cần xếp lịch', scheduled: 'Đã xếp lịch', done: 'Đã tư vấn', cancelled: 'Huỷ' };
+---
+<Admin title="CSKH" active="cskh">
+  <h1>CSKH & lịch tư vấn</h1>
+  <div class="tabs"><a href="?tab=chat" class={tab === 'chat' ? 'on' : ''}>Chatbot hỗ trợ</a><a href="?tab=tv" class={tab === 'tv' ? 'on' : ''}>Lịch tư vấn 2 triệu</a></div>
+  {tab === 'chat' && (
+    <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);align-items:start">
+      <div class="card tbl"><table><tr><th>Phiên</th><th>Tin cuối</th><th>Trạng thái</th></tr>
+        {sessions.map((s) => <tr style={s.id === sid ? 'background:#ffffff0c' : ''}><td><a href={`?tab=chat&s=${s.id}`}>#{s.id}</a><br /><span class="muted" style="font-size:12px">{s.email || 'khách vãng lai'} · {s.n} tin</span></td><td style="font-size:13px">{(s.last || '').slice(0, 80)}</td><td><span class={`chip ${SS[s.status][1]}`}>{SS[s.status][0]}</span></td></tr>)}
+        {!sessions.length && <tr><td colspan="3" class="muted">Chưa có phiên.</td></tr>}</table></div>
+      {sid > 0 && (
+        <div class="card"><div class="chat" style="height:auto;max-height:520px"><div class="log">{msgs.map((m) => <div class={`msg ${m.role}`}>{m.content}</div>)}</div></div>
+          <form class="toolbar" onsubmit={`event.preventDefault(); adm('/support/${sid}', formObj(this))`}><input name="reply" placeholder="Trả lời với tư cách nhân viên" style="flex:1" /><button class="btn sm">Gửi</button></form>
+          <div style="display:flex;gap:6px"><button class="btn sm ghost" onclick={`adm('/support/${sid}', { status: 'closed' })`}>Đóng phiên</button><button class="btn sm ghost" onclick={`adm('/support/${sid}', { status: 'open' })`}>Trả lại bot</button></div>
+          <p class="muted" style="font-size:12px">Khách thấy câu trả lời của nhân viên trong khung chat ở lần mở sau.</p></div>)}
+    </div>)}
+  {tab === 'tv' && (
+    <div class="grid" style="gap:14px">{bookings.map((b) => (
+      <div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>{b.code} · {b.name} · {b.phone} · {b.company}</b><span class="chip warn">{BK[b.status]}</span></div>
+        <div class="row" style="font-size:14px;margin-top:8px"><div><span class="muted">Mục tiêu</span><br />{b.goal}</div><div><span class="muted">Ngân sách</span><br />{b.budget}</div><div><span class="muted">Nỗi đau</span><br />{b.pain}</div><div><span class="muted">Kênh / công cụ</span><br />{b.channels} {b.current_tools}</div><div><span class="muted">Khung giờ</span><br />{b.slots}</div></div>
+        {b.detail && <p class="muted" style="font-size:14px">{b.detail}</p>}
+        <form class="toolbar" onsubmit={`event.preventDefault(); adm('/bookings/${b.id}', formObj(this))`}>
+          <select name="status">{Object.entries(BK).map(([k, v]) => <option value={k} selected={b.status === k}>{v as string}</option>)}</select>
+          <input name="scheduled_at" type="datetime-local" value={b.scheduled_at || ''} /><input name="meet_url" placeholder="Link Google Meet / Zalo" value={b.meet_url || ''} />
+          <input name="admin_note" placeholder="Ghi chú" value={b.admin_note || ''} /><button class="btn sm">Lưu</button></form></div>))}
+      {!bookings.length && <div class="card muted">Chưa có lịch tư vấn.</div>}</div>)}
+</Admin>

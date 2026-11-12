@@ -1,0 +1,38 @@
+---
+import '../styles/global.css';
+interface Props { title: string; active: string }
+const { title, active } = Astro.props; const u = Astro.locals.user;
+const env = Astro.locals.runtime.env;
+const { first } = await import('../lib/db');
+const q: any = await first(env.DB, "SELECT (SELECT COUNT(*) FROM orders WHERE status='paid') paid, (SELECT COUNT(*) FROM orders WHERE status='quote_pending') quote, (SELECT COUNT(*) FROM support_sessions WHERE status='needs_human') sup, (SELECT COUNT(*) FROM bookings WHERE status='paid') bk");
+const M = [
+  ['dash', '/admin', '📊', 'Tổng quan', 0], ['orders', '/admin/orders', '✅', 'Duyệt yêu cầu', q.paid + q.quote], ['templates', '/admin/templates', '🧩', 'Kho mẫu', 0],
+  ['crm', '/admin/crm', '👥', 'CRM khách hàng', 0], ['cskh', '/admin/cskh', '💬', 'CSKH & lịch tư vấn', q.sup + q.bk], ['promos', '/admin/promos', '🏷️', 'Khuyến mãi', 0],
+  ['aff', '/admin/affiliate', '🤝', 'Affiliate', 0], ['pay', '/admin/payments', '💳', 'Giao dịch', 0], ['settings', '/admin/settings', '⚙️', 'Thiết lập', 0],
+];
+---
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>{title} · Quản trị Salefronts AI</title>
+<link rel="icon" href="/favicon.svg" /><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet" /><meta name="robots" content="noindex" /></head>
+<body>
+  <div class="admin">
+    <aside>
+      <a class="logo" href="/" style="padding:6px 12px 18px;color:#fff"><i>✦</i> Quản trị</a>
+      {M.map(([k, h, i, l, n]) => <a href={h as string} class={active === k ? 'on' : ''}><span>{i}</span>{l}{(n as number) > 0 && <span class="chip warn" style="margin-left:auto">{n}</span>}</a>)}
+      <div style="margin-top:20px;padding:10px 12px;font-size:12px" class="muted">{u.email}<br /><span class="chip">{u.role}</span><br /><a href="/api/auth/logout" style="padding:0;margin-top:8px">Đăng xuất</a></div>
+    </aside>
+    <main><slot /></main>
+  </div>
+  <script is:inline>
+    window.adm = async (path, data, opts = {}) => {
+      const isFD = data instanceof FormData;
+      const r = await fetch('/api/admin' + path, { method: 'POST', headers: isFD ? {} : { 'content-type': 'application/json' }, body: isFD ? data : JSON.stringify(data || {}) });
+      const d = await r.json().catch(() => ({ ok: false, error: 'Lỗi mạng' }));
+      if (!d.ok) { const t = document.getElementById('toast'); if (t) { t.textContent = d.error; t.style.display = 'block'; setTimeout(() => (t.style.display = 'none'), 4000); } throw new Error(d.error); }
+      if (opts.reload !== false) location.reload();
+      return d;
+    };
+    window.formObj = (f) => { const o = Object.fromEntries(new FormData(f)); f.querySelectorAll('input[type=checkbox]').forEach((c) => (o[c.name] = c.checked ? 1 : 0)); return o; };
+  </script>
+  <div id="toast" class="card" style="display:none;position:fixed;bottom:20px;right:20px;z-index:99;border-color:#ef4444;background:#2a1215"></div>
+</body></html>

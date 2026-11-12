@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "salefronts-ai",
+  "main": "./dist/_worker.js/index.js",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS", "directory": "./dist" },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "salefronts-ai", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "salefronts-ai-files" }],
+  "vars": {
+    "OWNER_EMAIL": "minhducuy@gmail.com",
+    "SEPAY_BASE": "https://sepay-thuchi.sfportal.workers.dev",
+    "SITE_NAME": "Salefronts AI"
+  }
+}

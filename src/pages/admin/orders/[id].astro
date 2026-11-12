@@ -1,0 +1,80 @@
+---
+import Admin from '../../../layouts/Admin.astro';
+import { all, first } from '../../../lib/db';
+import { vnd, md, parseJSON } from '../../../lib/util';
+import { STATUS, KIND_LABEL } from '../../../lib/orders';
+const env = Astro.locals.runtime.env;
+const o: any = await first(env.DB, 'SELECT * FROM orders WHERE id=?', Number(Astro.params.id));
+if (!o) return Astro.redirect('/admin/orders');
+const [lead, tpl, msgs, files, pays, events, cust] = await Promise.all([
+  first<any>(env.DB, 'SELECT * FROM leads WHERE id=?', o.lead_id), first<any>(env.DB, 'SELECT * FROM templates WHERE id=?', o.template_id),
+  all<any>(env.DB, "SELECT * FROM messages WHERE order_id=? ORDER BY id", o.id), all<any>(env.DB, 'SELECT * FROM files WHERE order_id=? ORDER BY id', o.id),
+  all<any>(env.DB, 'SELECT * FROM payments WHERE order_id=? ORDER BY id', o.id), all<any>(env.DB, 'SELECT * FROM order_events WHERE order_id=? ORDER BY id DESC', o.id),
+  o.user_id ? first<any>(env.DB, 'SELECT email,name FROM users WHERE id=?', o.user_id) : null,
+]);
+const deliverables = parseJSON<any[]>(o.deliverables, []);
+const role = Astro.locals.user.role;
+---
+<Admin title={`Đơn ${o.code}`} active="orders">
+  <a href="/admin/orders" class="muted">← Danh sách</a>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <h1 style="margin:6px 0">{o.code} <span class={`chip ${STATUS[o.status]?.tone}`} style="font-size:14px;vertical-align:middle">{STATUS[o.status]?.label}</span> {o.out_of_template ? <span class="chip warn">Ngoài mẫu</span> : null}</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {o.status === 'paid' && <><button class="btn" onclick="adm(location.pathname.replace('/admin','') + '/approve', { note: prompt('Ghi chú khi duyệt (không bắt buộc)') || '' })">✅ Duyệt & chuyển Claude</button><button class="btn danger" onclick="const r=prompt('Lý do trả lại (khách sẽ thấy)'); if(r) adm(location.pathname.replace('/admin','') + '/reject', { reason: r })">Trả lại</button></>}
+      {o.status === 'in_progress' && <button class="btn" onclick="adm(location.pathname.replace('/admin','') + '/deliver')">🎁 Giao kết quả cho khách</button>}
+    </div>
+  </div>
+  <p class="muted">{KIND_LABEL[o.kind]} · mẫu <a href={`/admin/templates?edit=${tpl.id}`}>{tpl.name}</a> · khách <a href={`/admin/crm?lead=${lead.id}`}>{lead.name}</a> {lead.phone} · {lead.company} · {lead.industry} {cust && <>· TK {cust.email}</>}</p>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);align-items:start" id="og">
+    <div class="grid" style="gap:18px">
+      {(o.out_of_template || o.status === 'quote_pending') && (
+        <div class="card" style="border-color:#f59e0b88"><h3>Phần ngoài mẫu</h3><p style="white-space:pre-wrap">{o.out_of_template_note}</p>
+          <form class="toolbar" onsubmit="event.preventDefault(); adm(location.pathname.replace('/admin','') + '/quote', formObj(this))"><input name="custom_price" type="number" min="0" step="10000" placeholder="Giá phần ngoài mẫu (đ)" value={o.custom_price ?? ''} /><button class="btn sm">Gửi báo giá</button></form>
+          <span class="muted" style="font-size:13px">Báo giá xong khách sẽ thấy tổng mới và thanh toán được.</span></div>)}
+
+      {['in_progress', 'delivered'].includes(o.status) && (
+        <div class="card" style="border-color:#22c55e66"><h3>Kết quả giao khách</h3>
+          {deliverables.map((d, i) => <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)"><span>{d.type} · <b>{d.title}</b> · {d.file_id ? <a href={`/api/files/${d.file_id}`}>tệp</a> : <a href={d.url} target="_blank">{d.url}</a>}</span><button class="btn sm ghost" onclick={`adm(location.pathname.replace('/admin','') + '/deliverable-remove', { index: ${i} })`}>Xoá</button></div>)}
+          <form id="dform" class="row" style="margin-top:10px;align-items:end">
+            <div><label>Loại</label><select name="type"><option value="github">Link GitHub</option><option value="web">Link web</option><option value="extension">Extension (.zip)</option><option value="media">Media (ảnh/video)</option><option value="file">Tệp khác</option><option value="link">Link khác</option></select></div>
+            <div><label>Tiêu đề</label><input name="title" required placeholder="Ví dụ: Web bán hàng đã chạy" /></div>
+            <div><label>Link (hoặc chọn tệp)</label><input name="url" placeholder="https://..." /></div>
+            <div><label>Tệp</label><input name="file" type="file" /></div>
+            <div><button class="btn sm">+ Thêm kết quả</button></div>
+          </form>
+          <label style="margin-top:16px">Hướng dẫn sử dụng gửi khách (Markdown, đã điền sẵn từ mẫu)</label>
+          <textarea id="guide" style="min-height:220px">{o.guide_md || tpl.guide_md || ''}</textarea>
+          <button class="btn sm ghost" style="margin-top:8px" onclick="adm(location.pathname.replace('/admin','') + '/guide', { guide_md: document.getElementById('guide').value })">Lưu hướng dẫn</button>
+        </div>)}
+
+      {o.handoff_md && (
+        <div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Gói giao việc cho Claude (uyminh-6)</h3>
+          <span><span class="chip">{o.handoff_status}</span> <button class="btn sm" onclick="navigator.clipboard.writeText(document.getElementById('hmd').textContent); this.textContent='Đã chép'">Sao chép cho Claude</button> <button class="btn sm ghost" onclick="adm(location.pathname.replace('/admin','') + '/handoff')">Gửi lại webhook</button></span></div>
+          <pre id="hmd" style="white-space:pre-wrap;font-size:13px;background:#0005;padding:12px;border-radius:12px;max-height:360px;overflow:auto">{o.handoff_md}</pre></div>)}
+
+      {o.brief_md && <div class="card prose"><Fragment set:html={md(o.brief_md)} /></div>}
+      {o.mockup_html && <div id="mockup"><h3>Mockup (phiên bản {o.mockup_version}, đã sửa {o.revisions_used} lần)</h3><div class="mock"><iframe sandbox="" srcdoc={o.mockup_html}></iframe></div></div>}
+    </div>
+
+    <div class="grid" style="gap:18px">
+      <div class="card"><h3>Tiền</h3><table><tr><td>Giá theo mẫu</td><td>{vnd(o.price)}</td></tr><tr><td>Ngoài mẫu</td><td>{o.custom_price === null ? '-' : vnd(o.custom_price)}</td></tr><tr><td>Giảm</td><td>{vnd(o.discount)} {o.promo_code}</td></tr><tr><td><b>Tổng</b></td><td><b>{vnd(o.total)}</b></td></tr><tr><td>Đã thu</td><td>{vnd(o.paid_amount)}</td></tr></table>
+        {pays.map((p) => <div style="font-size:13px;padding:6px 0;border-top:1px solid var(--line)">{p.code} · {vnd(p.amount)} · {p.kind} · <span class={`chip ${p.status === 'paid' ? 'good' : 'warn'}`}>{p.status}</span></div>)}</div>
+      <div class="card"><h3>Ghi chú nội bộ</h3><textarea id="note">{o.admin_note || ''}</textarea><button class="btn sm ghost" style="margin-top:8px" onclick="adm(location.pathname.replace('/admin','') + '/note', { note: document.getElementById('note').value }, { reload: false }).then(() => this.textContent='Đã lưu')">Lưu</button></div>
+      {['admin', 'owner'].includes(role) && <div class="card"><h3>Đổi trạng thái thủ công</h3><form class="toolbar" onsubmit="event.preventDefault(); adm(location.pathname.replace('/admin','') + '/status', formObj(this))"><select name="status">{['chatting', 'mockup', 'awaiting_payment', 'paid', 'in_progress', 'delivered', 'cancelled', 'rejected'].map((s) => <option value={s} selected={s === o.status}>{STATUS[s].label}</option>)}</select><button class="btn sm ghost">Lưu</button></form></div>}
+      <div class="card"><h3>Tư liệu khách gửi</h3>{files.filter((f) => f.kind === 'upload').map((f) => <div><a href={`/api/files/${f.id}`}>📎 {f.name}</a> <span class="muted">{Math.round(f.size / 1024)}KB</span></div>)}{!files.some((f) => f.kind === 'upload') && <span class="muted">Không có</span>}</div>
+      <div class="card"><h3>Tiến trình</h3>{events.map((e) => <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">{e.created_at} · {e.actor}</span><br />{e.note}</div>)}</div>
+      <details class="card" open={o.status === 'paid'}><summary style="cursor:pointer"><b>Chat với AI</b> ({msgs.length})</summary><div class="chat" style="height:auto;max-height:480px"><div class="log">{msgs.filter((m) => m.role !== 'system').map((m) => <div class={`msg ${m.role}`}>{m.content}</div>)}</div></div></details>
+    </div>
+  </div>
+  <script>
+    if (matchMedia('(max-width:1100px)').matches) (document.getElementById('og') as HTMLElement).style.gridTemplateColumns = '1fr';
+    const f = document.getElementById('dform') as HTMLFormElement | null;
+    f?.addEventListener('submit', async (e) => {
+      e.preventDefault(); const base = location.pathname.replace('/admin', ''); const fd = new FormData(f); const file = fd.get('file') as File;
+      let file_id: number | null = null;
+      if (file && file.size) { const up = new FormData(); up.append('file', file); const d = await (window as any).adm(base + '/upload', up, { reload: false }); file_id = d.file_id; }
+      await (window as any).adm(base + '/deliverable', { type: fd.get('type'), title: fd.get('title'), url: fd.get('url') || null, file_id });
+    });
+  </script>
+</Admin>

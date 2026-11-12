@@ -1,0 +1,52 @@
+---
+import Base from '../layouts/Base.astro';
+import { vnd } from '../lib/util';
+const s = Astro.locals.settings; const user = Astro.locals.user;
+const price = Number(s.consult_price || 2000000);
+---
+<Base title="Đặt lịch tư vấn AI 60 phút">
+  <section style="padding-top:60px">
+    <div class="wrap grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:start;gap:30px" id="dl">
+      <div class="rv in">
+        <span class="eyebrow">Tư vấn 1:1</span>
+        <h1 style="font-size:clamp(32px,4.5vw,50px);margin-top:14px">60 phút để biết <span class="grad">nên làm gì trước</span></h1>
+        <p class="muted">Chuyên gia Salefronts cùng AI xem kênh hiện có của bạn, chọn sản phẩm số đáng làm nhất theo ngân sách, và lên kế hoạch cụ thể.</p>
+        <div class="card"><div class="price grad">{vnd(price)}</div><ul class="muted" style="padding-left:18px">
+          <li>Chấm điểm fanpage, website, kênh bán hiện có</li><li>Kế hoạch 90 ngày theo mục tiêu và ngân sách</li>
+          <li>Bản ghi tóm tắt và đề xuất gửi sau buổi gọi</li><li>Trừ toàn bộ phí vào đơn nếu đặt làm trong 14 ngày</li></ul></div>
+      </div>
+      <form class="card" id="bf">
+        <h3>Gửi yêu cầu cụ thể</h3>
+        <div class="row"><div><label>Họ tên *</label><input name="name" required value={user?.name || ''} /></div><div><label>Số Zalo *</label><input name="phone" required inputmode="tel" value={user?.phone || ''} /></div></div>
+        <div class="row"><div><label>Công ty / cửa hàng</label><input name="company" /></div><div><label>Ngành</label><input name="industry" /></div></div>
+        <label>Mục tiêu bạn muốn đạt trong 3 đến 6 tháng tới *</label><textarea name="goal" required placeholder="Ví dụ: bán online 200 set quà Tết, có 500 khách Zalo..."></textarea>
+        <label>Ngân sách dự kiến *</label><select name="budget" required><option value="">Chọn</option><option>Dưới 5 triệu</option><option>5 đến 10 triệu</option><option>10 đến 20 triệu</option><option>20 đến 50 triệu</option><option>Trên 50 triệu</option></select>
+        <label>Nỗi đau lớn nhất cần giải quyết *</label><textarea name="pain" required placeholder="Ví dụ: video tự làm không đẹp, khách cũ không quay lại, web không bán được..."></textarea>
+        <div class="row"><div><label>Kênh đang dùng</label><input name="channels" placeholder="Facebook, Zalo, Shopee, web..." /></div><div><label>Công cụ đang dùng</label><input name="current_tools" placeholder="Canva, KiotViet, MISA, ChatGPT..." /></div></div>
+        <label>Khung giờ mong muốn</label><input name="slots" placeholder="Ví dụ: tối thứ 3 hoặc sáng thứ 7" />
+        <label>Thông tin thêm</label><textarea name="detail"></textarea>
+        <label style="display:flex;gap:10px;color:var(--text)"><input type="checkbox" name="consent" style="width:auto" /> <span>Tôi đồng ý <a href="/chinh-sach" target="_blank">chính sách xử lý dữ liệu</a></span></label>
+        <div class="err" id="be"></div>
+        <button class="btn" style="margin-top:10px">Gửi và thanh toán {vnd(price)}</button>
+      </form>
+      <div class="card center" id="bpay" style="display:none">
+        <h3>Quét mã để xác nhận lịch</h3><p class="muted">Nội dung: <b id="bcode"></b></p><div class="qr"><img id="bqr" alt="VietQR" /></div>
+        <p id="bstate" class="muted" style="margin-top:12px">Đang chờ tiền về...</p><button class="btn ghost sm" id="bdemo" style="display:none">Chế độ demo: giả lập đã chuyển khoản</button>
+      </div>
+    </div>
+  </section>
+  <script>
+    if (matchMedia('(max-width:860px)').matches) (document.getElementById('dl') as HTMLElement).style.gridTemplateColumns = '1fr';
+    const f = document.getElementById('bf') as HTMLFormElement;
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const fd = new FormData(f); const err = document.getElementById('be')!; err.textContent = '';
+      const r = await fetch('/api/bookings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...Object.fromEntries(fd), consent: fd.get('consent') ? 1 : 0 }) });
+      const d = await r.json(); if (!d.ok) { err.textContent = d.error; return; }
+      (window as any).sfTrack?.('booking_create');
+      f.style.display = 'none'; const box = document.getElementById('bpay')!; box.style.display = '';
+      document.getElementById('bcode')!.textContent = d.payment.code; (document.getElementById('bqr') as HTMLImageElement).src = d.payment.qr_url;
+      if (d.payment.provider === 'demo') { const b = document.getElementById('bdemo')!; b.style.display = ''; b.onclick = () => fetch(`/api/payments/${d.payment.code}/confirm`, { method: 'POST' }); }
+      const t = setInterval(async () => { const s = await (await fetch(`/api/payments/${d.payment.code}/status`)).json(); if (s.status === 'paid') { clearInterval(t); document.getElementById('bstate')!.innerHTML = '<b class="ok">Đã nhận thanh toán.</b> Salefronts sẽ nhắn Zalo xác nhận giờ gọi trong 24 giờ.'; (window as any).sfTrack?.('purchase', { value: d.payment.amount, currency: 'VND' }); } }, 4000);
+    });
+  </script>
+</Base>

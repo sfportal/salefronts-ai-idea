@@ -1,0 +1,17 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all } from '../../lib/db';
+import { vnd } from '../../lib/util';
+const env = Astro.locals.runtime.env;
+const status = Astro.url.searchParams.get('status') || '';
+const rows = await all<any>(env.DB, `SELECT p.*, o.code ocode, o.id oid, b.code bcode FROM payments p LEFT JOIN orders o ON o.id=p.order_id LEFT JOIN bookings b ON b.id=p.booking_id ${status ? 'WHERE p.status=?' : ''} ORDER BY p.id DESC LIMIT 300`, ...(status ? [status] : []));
+const live = !!env.SEPAY_API_KEY;
+---
+<Admin title="Giao dịch" active="pay">
+  <h1>Giao dịch</h1>
+  <p><span class={`chip ${live ? 'good' : 'warn'}`}>{live ? 'SePay đang chạy thật' : 'Chế độ demo: chưa có SEPAY_API_KEY'}</span> <span class="muted" style="font-size:13px">Tiền về được xác nhận tự động qua sepay-thuchi; nút Xác nhận dùng cho chuyển khoản thủ công.</span></p>
+  <div class="tabs">{[['', 'Tất cả'], ['pending', 'Chờ'], ['paid', 'Đã thanh toán'], ['refunded', 'Đã hoàn'], ['cancelled', 'Huỷ']].map(([k, l]) => <a href={`?status=${k}`} class={status === k ? 'on' : ''}>{l}</a>)}</div>
+  <div class="card tbl"><table><tr><th>Mã GD</th><th>Cho</th><th>Số tiền</th><th>Loại</th><th>Nguồn</th><th>Trạng thái</th><th>Thời gian</th><th></th></tr>
+    {rows.map((p) => <tr><td><b>{p.code}</b></td><td>{p.ocode ? <a href={`/admin/orders/${p.oid}`}>{p.ocode}</a> : p.bcode}</td><td>{vnd(p.amount)}</td><td>{p.kind}</td><td>{p.provider}</td><td><span class={`chip ${p.status === 'paid' ? 'good' : p.status === 'pending' ? 'warn' : 'bad'}`}>{p.status}</span></td><td style="font-size:13px">{p.paid_at || p.created_at}</td>
+      <td style="white-space:nowrap">{p.status === 'pending' && <><button class="btn sm ghost" onclick={`if(confirm('Xác nhận đã nhận ${p.amount}đ?')) adm('/payments/${p.id}/confirm')`}>Xác nhận</button> <button class="btn sm ghost" onclick={`adm('/payments/${p.id}/cancel')`}>Huỷ</button></>}{p.status === 'paid' && <button class="btn sm ghost" onclick={`if(confirm('Đánh dấu đã hoàn tiền?')) adm('/payments/${p.id}/refund')`}>Đã hoàn</button>}</td></tr>)}</table></div>
+</Admin>

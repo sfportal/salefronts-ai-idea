@@ -1,0 +1,46 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+import { STATUS } from '../../lib/orders';
+const env = Astro.locals.runtime.env;
+const q = Astro.url.searchParams.get('q') || ''; const stage = Astro.url.searchParams.get('stage') || ''; const leadId = Astro.url.searchParams.get('lead');
+const where: string[] = []; const args: any[] = [];
+if (q) { where.push('(l.name LIKE ? OR l.phone LIKE ? OR l.company LIKE ? OR l.email LIKE ? OR l.tags LIKE ?)'); for (let i = 0; i < 5; i++) args.push(`%${q}%`); }
+if (stage) { where.push('l.stage=?'); args.push(stage); }
+const leads = await all<any>(env.DB, `SELECT l.*, (SELECT COUNT(*) FROM orders o WHERE o.lead_id=l.id) n_orders, (SELECT COALESCE(SUM(paid_amount),0) FROM orders o WHERE o.lead_id=l.id) spent FROM leads l ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY l.updated_at DESC LIMIT 300`, ...args);
+const lead: any = leadId ? await first(env.DB, 'SELECT * FROM leads WHERE id=?', Number(leadId)) : null;
+const lo = lead ? await all<any>(env.DB, 'SELECT o.*, t.name tname FROM orders o JOIN templates t ON t.id=o.template_id WHERE o.lead_id=? ORDER BY o.id DESC', lead.id) : [];
+const notes = lead ? await all<any>(env.DB, 'SELECT * FROM crm_notes WHERE lead_id=? ORDER BY done, id DESC', lead.id) : [];
+const bks = lead ? await all<any>(env.DB, 'SELECT * FROM bookings WHERE lead_id=? ORDER BY id DESC', lead.id) : [];
+const evs = lead?.user_id ? await all<any>(env.DB, 'SELECT * FROM events WHERE user_id=? OR vid=? ORDER BY id DESC LIMIT 40', lead.user_id, lead.vid) : lead ? await all<any>(env.DB, 'SELECT * FROM events WHERE vid=? ORDER BY id DESC LIMIT 40', lead.vid) : [];
+const ST: any = { new: 'Mới', contacted: 'Đã liên hệ', quoted: 'Đã báo giá', won: 'Đã mua', lost: 'Mất' };
+const due = await all<any>(env.DB, "SELECT n.*, l.name FROM crm_notes n JOIN leads l ON l.id=n.lead_id WHERE n.done=0 AND n.due_at IS NOT NULL AND n.due_at <= date('now','+1 day') ORDER BY n.due_at LIMIT 10");
+---
+<Admin title="CRM" active="crm">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h1>CRM khách hàng</h1><a class="btn sm ghost" href="/api/admin/export/leads">Xuất CSV</a></div>
+  {due.length > 0 && <div class="card" style="border-color:#f59e0b88;margin-bottom:16px"><b>Việc cần làm hôm nay</b>{due.map((n) => <div style="font-size:14px;margin-top:6px">⏰ {n.due_at} · <a href={`?lead=${n.lead_id}`}>{n.name}</a>: {n.content}</div>)}</div>}
+  <form class="toolbar"><input name="q" value={q} placeholder="Tên, SĐT, công ty, nhãn" /><select name="stage"><option value="">Mọi giai đoạn</option>{Object.entries(ST).map(([k, v]) => <option value={k} selected={stage === k}>{v as string}</option>)}</select><button class="btn sm ghost">Lọc</button></form>
+  <div class="grid" style={lead ? 'grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start' : ''}>
+    <div class="card tbl"><table><tr><th>Khách</th><th>Ngành / công ty</th><th>Giai đoạn</th><th>Đơn / đã trả</th><th>Nguồn</th></tr>
+      {leads.map((l) => <tr style={lead?.id === l.id ? 'background:#ffffff0c' : ''}><td><a href={`?lead=${l.id}&q=${q}&stage=${stage}`}><b>{l.name}</b></a><br /><span class="muted">{l.phone}</span>{l.tags && <div>{l.tags.split(',').filter(Boolean).map((t: string) => <span class="chip" style="margin:2px 2px 0 0">{t.trim()}</span>)}</div>}</td><td>{l.industry}<br /><span class="muted">{l.company}</span></td><td>{ST[l.stage]}</td><td>{l.n_orders} / {vnd(l.spent)}</td><td class="muted" style="font-size:13px">{l.source}{l.ref_code ? ' · ref ' + l.ref_code : ''}</td></tr>)}
+    </table></div>
+    {lead && (
+      <div class="grid" style="gap:16px">
+        <div class="card"><div style="display:flex;justify-content:space-between"><h3 style="margin:0">{lead.name}</h3><a href={`https://zalo.me/${lead.phone}`} target="_blank" class="btn sm">Nhắn Zalo</a></div>
+          <p class="muted">{lead.phone} · {lead.email || 'chưa có email'} · tạo {lead.created_at}</p>
+          <form class="row" onsubmit={`event.preventDefault(); adm('/leads/${lead.id}', formObj(this))`}>
+            <div><label>Giai đoạn</label><select name="stage">{Object.entries(ST).map(([k, v]) => <option value={k} selected={lead.stage === k}>{v as string}</option>)}</select></div>
+            <div><label>Nhãn (cách nhau dấu phẩy)</label><input name="tags" value={lead.tags || ''} /></div>
+            <div style="grid-column:1/-1"><label>Ghi chú</label><textarea name="note">{lead.note || ''}</textarea></div>
+            <div><button class="btn sm">Lưu</button></div>
+          </form></div>
+        <div class="card"><h3>Việc & ghi chú chăm sóc</h3>
+          <form class="toolbar" onsubmit={`event.preventDefault(); adm('/leads/${lead.id}/notes', formObj(this))`}><input name="content" placeholder="Ví dụ: gọi lại báo giá TVC" style="flex:1" /><input name="due_at" type="date" /><button class="btn sm">Thêm</button></form>
+          {notes.map((n) => <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px"><input type="checkbox" checked={!!n.done} style="width:auto" onchange={`adm('/notes/${n.id}/done')`} /><span style={n.done ? 'opacity:.5;text-decoration:line-through' : ''}>{n.content} <span class="muted">· {n.author} {n.due_at ? '· hạn ' + n.due_at : ''}</span></span></div>)}</div>
+        <div class="card"><h3>Đơn</h3>{lo.map((o) => <div style="padding:6px 0;border-bottom:1px solid var(--line)"><a href={`/admin/orders/${o.id}`}>{o.code}</a> · {o.tname} · <span class={`chip ${STATUS[o.status]?.tone}`}>{STATUS[o.status]?.label}</span> · {vnd(o.total)}</div>)}{!lo.length && <span class="muted">Chưa có</span>}
+          {bks.map((b) => <div style="padding:6px 0">📅 Tư vấn {b.code} · {b.status} · {b.goal}</div>)}</div>
+        <div class="card"><h3>Lịch sử tương tác</h3>{evs.map((e) => <div style="font-size:13px;padding:4px 0"><span class="muted">{e.created_at}</span> · {e.type} <span class="muted">{e.data}</span></div>)}</div>
+      </div>)}
+  </div>
+</Admin>

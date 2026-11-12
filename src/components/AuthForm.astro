@@ -1,0 +1,41 @@
+---
+interface Props { mode: 'login' | 'register' }
+const { mode } = Astro.props;
+const next = Astro.url.searchParams.get('next') || '/tai-khoan';
+const error = Astro.url.searchParams.get('error');
+const googleOn = !!Astro.locals.runtime.env.GOOGLE_CLIENT_ID;
+---
+<section style="padding-top:60px">
+  <div class="wrap" style="max-width:460px">
+    <div class="card rv in">
+      <h1 style="font-size:32px">{mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</h1>
+      <p class="muted">{mode === 'login' ? 'Xem lịch sử yêu cầu, trạng thái xử lý và tải kết quả.' : 'Tài khoản giúp bạn thanh toán, theo dõi trạng thái và nhận kết quả.'}</p>
+      <a class="btn ghost" style="width:100%" href={`/api/auth/google?next=${encodeURIComponent(next)}`} aria-disabled={!googleOn}>
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        Tiếp tục với Google
+      </a>
+      <div class="muted center" style="margin:14px 0;font-size:13px">hoặc dùng email</div>
+      <form id="af">
+        {mode === 'register' && <div class="row"><div><label>Họ tên</label><input name="name" required /></div><div><label>Số Zalo</label><input name="phone" inputmode="tel" /></div></div>}
+        <label>Email</label><input name="email" type="email" required autocomplete="email" />
+        <label>Mật khẩu</label><input name="password" type="password" required minlength="8" autocomplete={mode === 'login' ? 'current-password' : 'new-password'} />
+        {mode === 'register' && <label style="display:flex;gap:10px;color:var(--text)"><input type="checkbox" name="consent" style="width:auto" /> <span>Tôi đồng ý <a href="/chinh-sach" target="_blank">điều khoản và chính sách dữ liệu</a></span></label>}
+        <div class="err" id="ae">{error}</div>
+        <button class="btn" style="width:100%;margin-top:8px">{mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
+      </form>
+      <p class="muted center" style="margin-top:16px;font-size:14px">
+        {mode === 'login' ? <>Chưa có tài khoản? <a href={`/dang-ky?next=${encodeURIComponent(next)}`}>Tạo tài khoản</a></> : <>Đã có tài khoản? <a href={`/dang-nhap?next=${encodeURIComponent(next)}`}>Đăng nhập</a></>}
+      </p>
+    </div>
+  </div>
+</section>
+<script define:vars={{ mode, next }}>
+  document.getElementById('af').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = new FormData(e.target); const err = document.getElementById('ae'); err.textContent = '';
+    const data = Object.fromEntries(f); if (mode === 'register') data.consent = f.get('consent') ? 1 : 0;
+    const r = await fetch('/api/auth/' + (mode === 'login' ? 'login' : 'register'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+    const d = await r.json(); if (!d.ok) { err.textContent = d.error; return; }
+    window.sfTrack && window.sfTrack(mode === 'login' ? 'login' : 'sign_up');
+    location.href = next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/tai-khoan';
+  });
+</script>

@@ -1,0 +1,10 @@
+# Copy to .dev.vars for local dev. On Cloudflare use: npx wrangler secret put NAME
+SESSION_SECRET=change-me-long-random
+ANTHROPIC_API_KEY=
+DEEPSEEK_API_KEY=
+SEPAY_API_KEY=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+HANDOFF_WEBHOOK_URL=
+HANDOFF_WEBHOOK_TOKEN=
+ADMIN_BOOTSTRAP_KEY=

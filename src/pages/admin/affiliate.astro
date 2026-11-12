@@ -1,0 +1,26 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all } from '../../lib/db';
+import { vnd } from '../../lib/util';
+const env = Astro.locals.runtime.env; const s = Astro.locals.settings;
+const coms = await all<any>(env.DB, 'SELECT c.*, u.email, u.name, o.code FROM commissions c JOIN users u ON u.id=c.referrer_id JOIN orders o ON o.id=c.order_id ORDER BY (c.status IN (\'pending\',\'approved\')) DESC, c.id DESC LIMIT 200');
+const top = await all<any>(env.DB, "SELECT u.id, u.email, u.name, u.ref_code, (SELECT COUNT(*) FROM users r WHERE r.referred_by=u.id) refs, (SELECT COALESCE(SUM(amount),0) FROM commissions c WHERE c.referrer_id=u.id AND c.status!='void') earned FROM users u WHERE EXISTS (SELECT 1 FROM users r WHERE r.referred_by=u.id) ORDER BY earned DESC LIMIT 50");
+const ST: any = { pending: 'Chờ duyệt', approved: 'Đã duyệt', paid: 'Đã chi', void: 'Huỷ' };
+---
+<Admin title="Affiliate" active="aff">
+  <h1>Affiliate</h1>
+  <form class="card row" style="align-items:end" onsubmit="event.preventDefault(); adm('/settings', formObj(this))">
+    <div><label>Hoa hồng người giới thiệu (% đơn đã giao)</label><input name="aff_commission_pct" type="number" value={s.aff_commission_pct} /></div>
+    <div><label>Giảm cho người được giới thiệu (% đơn đầu)</label><input name="aff_discount_pct" type="number" value={s.aff_discount_pct} /></div>
+    <div><button class="btn sm">Lưu chính sách</button></div>
+  </form>
+  <p class="muted" style="font-size:13px">Hoa hồng được tạo khi giao đơn. Duyệt sau 7 ngày nếu không có hoàn tiền, rồi chuyển khoản và đánh dấu Đã chi.</p>
+  <div class="grid g2" style="margin-top:16px;align-items:start">
+    <div class="card tbl"><h3>Hoa hồng</h3><table><tr><th>Người giới thiệu</th><th>Đơn</th><th>Số tiền</th><th>Trạng thái</th></tr>
+      {coms.map((c) => <tr><td>{c.name || c.email}</td><td>{c.code}</td><td>{vnd(c.amount)}</td><td><select onchange={`adm('/commissions/${c.id}', { status: this.value })`}>{Object.entries(ST).map(([k, v]) => <option value={k} selected={c.status === k}>{v as string}</option>)}</select></td></tr>)}
+      {!coms.length && <tr><td colspan="4" class="muted">Chưa có.</td></tr>}</table></div>
+    <div class="card tbl"><h3>Người giới thiệu</h3><table><tr><th>Tài khoản</th><th>Mã</th><th>Số người</th><th>Tổng hoa hồng</th></tr>
+      {top.map((t) => <tr><td>{t.name || t.email}</td><td>{t.ref_code}</td><td>{t.refs}</td><td>{vnd(t.earned)}</td></tr>)}
+      {!top.length && <tr><td colspan="4" class="muted">Chưa có.</td></tr>}</table></div>
+  </div>
+</Admin>

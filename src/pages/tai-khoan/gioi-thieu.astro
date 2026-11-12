@@ -1,0 +1,21 @@
+---
+import Portal from '../../layouts/Portal.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+const env = Astro.locals.runtime.env; const u = Astro.locals.user; const s = Astro.locals.settings;
+const link = `${Astro.url.origin}/?ref=${u.ref_code}`;
+const refs = await all<any>(env.DB, 'SELECT name, email, created_at FROM users WHERE referred_by=? ORDER BY id DESC', u.id);
+const coms = await all<any>(env.DB, 'SELECT c.*, o.code FROM commissions c JOIN orders o ON o.id=c.order_id WHERE c.referrer_id=? ORDER BY c.id DESC', u.id);
+const sum = (st: string) => coms.filter((c) => c.status === st).reduce((a, c) => a + c.amount, 0);
+---
+<Portal title="Giới thiệu bạn bè" tab="gt">
+  <div class="grid g2">
+    <div class="card"><h3>Link giới thiệu của bạn</h3><p class="muted">Bạn nhận {s.aff_commission_pct}% giá trị đơn đã giao. Bạn bè được giảm {s.aff_discount_pct}% đơn đầu tiên.</p>
+      <div style="display:flex;gap:8px"><input id="rl" value={link} readonly /><button class="btn sm" onclick="navigator.clipboard.writeText(document.getElementById('rl').value);this.textContent='Đã chép'">Chép</button></div>
+      <p class="muted" style="font-size:13px;margin-top:10px">Mã của bạn: <b>{u.ref_code}</b></p></div>
+    <div class="card grid g3 center"><div class="stat"><b>{refs.length}</b><span class="muted">Người đăng ký</span></div><div class="stat"><b>{vnd(sum('pending') + sum('approved'))}</b><span class="muted">Chờ chi</span></div><div class="stat"><b>{vnd(sum('paid'))}</b><span class="muted">Đã nhận</span></div></div>
+  </div>
+  <div class="card tbl" style="margin-top:18px"><h3>Hoa hồng</h3><table><tr><th>Đơn</th><th>Số tiền</th><th>Trạng thái</th><th>Ngày</th></tr>
+    {coms.map((c) => <tr><td>{c.code}</td><td>{vnd(c.amount)}</td><td>{({ pending: 'Chờ duyệt', approved: 'Đã duyệt', paid: 'Đã chi', void: 'Huỷ' } as any)[c.status]}</td><td>{c.created_at.slice(0, 10)}</td></tr>)}
+    {!coms.length && <tr><td colspan="4" class="muted">Chưa có hoa hồng.</td></tr>}</table></div>
+</Portal>

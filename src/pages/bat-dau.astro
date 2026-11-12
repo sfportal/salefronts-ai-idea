@@ -1,0 +1,259 @@
+---
+import Base from '../layouts/Base.astro';
+import { all } from '../lib/db';
+const env = Astro.locals.runtime.env;
+const tpls = await all<any>(env.DB, 'SELECT id,kind,slug,name,industries,summary,base_price,days,accent,demo_url FROM templates WHERE active=1 ORDER BY sort');
+const user = Astro.locals.user;
+const maxRev = Number(Astro.locals.settings.max_revisions || 2);
+const INDUSTRIES = ['Quà tặng, đặc sản', 'Nông sản, OCOP', 'Cà phê, trà', 'Quán cà phê, nhà hàng', 'Bất động sản', 'Phân phối, FMCG', 'Thời trang, mỹ phẩm', 'Giáo dục, đào tạo', 'Dịch vụ', 'Khác'];
+---
+<Base title="Bắt đầu yêu cầu" noSupport>
+  <section style="padding-top:50px">
+    <div class="wrap" style="max-width:1000px">
+      <div class="stepper" id="stepper"></div>
+
+      <!-- STEP 1: info + kind + template -->
+      <div id="s1">
+        <h1 style="font-size:clamp(30px,4vw,46px)">Kể cho AI nghe <span class="grad">bạn cần gì</span></h1>
+        <p class="muted">Bước 1: thông tin liên hệ và loại sản phẩm. Chưa cần tạo tài khoản.</p>
+        <form id="f1" class="card" style="margin-top:20px">
+          <div class="row">
+            <div><label>Số điện thoại Zalo *</label><input name="phone" inputmode="tel" placeholder="09xx xxx xxx" required value={user?.phone || ''} /></div>
+            <div><label>Họ tên *</label><input name="name" required value={user?.name || ''} /></div>
+          </div>
+          <div class="row">
+            <div><label>Ngành kinh doanh *</label><select name="industry" required><option value="">Chọn ngành</option>{INDUSTRIES.map((i) => <option>{i}</option>)}</select></div>
+            <div><label>Tên công ty / cửa hàng</label><input name="company" /></div>
+          </div>
+          <label>Bạn cần loại kết quả nào? *</label>
+          <div class="grid g3" id="kinds">
+            {[['media', '🎬', 'Media', 'Video, ảnh, catalogue'], ['extension', '🧩', 'Extension', 'Tiện ích Chrome'], ['web', '🛒', 'Web', 'Web bán hàng, landing']].map(([k, i, t, d]) => (
+              <div class="card tpl kind" data-kind={k} style="padding:16px"><div style="font-size:28px">{i}</div><b>{t}</b><div class="muted" style="font-size:13px">{d}</div></div>
+            ))}
+          </div>
+          <div id="tplwrap" style="display:none">
+            <label style="margin-top:20px">Chọn mẫu gần nhất với ý bạn *</label>
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Sản phẩm sẽ làm trên mẫu này. Muốn khác hẳn mẫu? Cứ nói với AI, phần khác sẽ được báo giá riêng.</p>
+            <div class="grid g3" id="tpls"></div>
+          </div>
+          <label style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;color:var(--text)"><input type="checkbox" name="consent" style="width:auto;margin-top:4px" /> <span>Tôi đồng ý để Salefronts lưu và xử lý thông tin này để tư vấn và thực hiện yêu cầu (<a href="/chinh-sach" target="_blank">chính sách</a>).</span></label>
+          <div class="err" id="e1"></div>
+          <button class="btn" style="margin-top:12px">Bắt đầu chat với AI →</button>
+        </form>
+      </div>
+
+      <!-- STEP 2: chat -->
+      <div id="s2" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+          <div><h2 style="margin:0">Chat chốt yêu cầu</h2><p class="muted" style="margin:4px 0 0">Mẫu: <b id="tplname"></b> · Mã yêu cầu <b id="code"></b></p></div>
+          <div style="min-width:240px"><div class="muted" style="font-size:13px;margin-bottom:6px" id="ptext"></div><div class="progress"><i id="pbar" style="width:0"></i></div></div>
+        </div>
+        <div class="card chat" style="margin-top:16px">
+          <div class="log" id="log"></div>
+          <div id="oot" class="chip warn" style="display:none;margin-bottom:8px">Có phần ngoài mẫu: Salefronts sẽ báo giá riêng</div>
+          <form id="f2">
+            <label class="btn ghost sm" style="margin:0;cursor:pointer" title="Tải ảnh, logo, tài liệu">📎<input type="file" id="file" style="display:none" multiple /></label>
+            <textarea id="msg" placeholder="Nhập câu trả lời... (Enter để gửi)"></textarea>
+            <button class="btn">Gửi</button>
+          </form>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center">
+          <button class="btn" id="gomock" disabled>Tổng kết & xem mockup ✨</button>
+          <span class="muted" style="font-size:13px" id="missing"></span>
+        </div>
+      </div>
+
+      <!-- STEP 3: brief + mockup -->
+      <div id="s3" style="display:none">
+        <h2>Phiếu yêu cầu và bản mô phỏng</h2>
+        <p class="muted">Bản mô phỏng có đóng dấu, dùng để bạn hình dung kết quả. Bạn còn <b id="revleft"></b> lần sửa.</p>
+        <div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);align-items:start" id="s3grid">
+          <div class="mock" id="mockup"><iframe sandbox="" title="Mockup" id="mframe"></iframe><div class="wm">BẢN MÔ PHỎNG</div></div>
+          <div>
+            <div class="card prose" id="brief" style="max-height:620px;overflow:auto"></div>
+          </div>
+        </div>
+        <div class="grid g2" style="margin-top:18px">
+          <form class="card" id="f3">
+            <b>Muốn sửa gì?</b>
+            <textarea id="fb" placeholder="Ví dụ: đổi màu chủ đạo sang xanh lá, thêm mục câu chuyện vùng trồng..."></textarea>
+            <div class="err" id="e3"></div>
+            <button class="btn ghost" id="revbtn">Gửi yêu cầu sửa</button>
+          </form>
+          <div class="card" id="paybox">
+            <b>Chốt và gửi yêu cầu</b>
+            <p class="muted" style="font-size:14px">Thanh toán để Salefronts duyệt và bắt đầu làm. Đơn từ 5 triệu chỉ cần cọc 50%.</p>
+            <div class="price grad" id="total"></div>
+            <input id="promo" placeholder="Mã khuyến mãi (nếu có)" style="margin:10px 0" />
+            <div class="err" id="e4"></div>
+            <button class="btn" id="paybtn">Thanh toán để gửi yêu cầu →</button>
+            <button class="btn ghost" id="quotebtn" style="display:none">Gửi để Salefronts báo giá phần ngoài mẫu</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4: pay -->
+      <div id="s4" style="display:none" class="center">
+        <h2>Quét mã để thanh toán</h2>
+        <p class="muted">Nội dung chuyển khoản: <b id="paycode"></b>. Hệ thống tự xác nhận khi tiền về, bạn không cần làm gì thêm.</p>
+        <div class="qr"><img id="qrimg" alt="Mã VietQR" /></div>
+        <div class="price grad" style="margin:14px 0" id="payamt"></div>
+        <p id="paystate" class="muted"><span class="typing"><span></span><span></span><span></span></span> Đang chờ tiền về...</p>
+        <button class="btn ghost sm" id="demopay" style="display:none">Chế độ demo: giả lập đã chuyển khoản</button>
+      </div>
+
+      <!-- STEP 5: done -->
+      <div id="s5" style="display:none" class="center">
+        <div style="font-size:72px">🎉</div>
+        <h2>Đã nhận yêu cầu <span class="grad" id="code5"></span></h2>
+        <p class="muted" id="msg5">Salefronts sẽ duyệt và bắt đầu thực hiện. Bạn theo dõi trạng thái và nhận kết quả trong tài khoản.</p>
+        <a class="btn" id="go5" href="/tai-khoan">Xem trạng thái đơn</a>
+      </div>
+    </div>
+  </section>
+
+  <script define:vars={{ tpls, loggedIn: !!user, maxRev }} is:inline>
+    window.__SF = { tpls, loggedIn, maxRev };
+  </script>
+  <script>
+    const { tpls, loggedIn, maxRev } = (window as any).__SF;
+    const $ = (id: string) => document.getElementById(id)!;
+    const qs = new URLSearchParams(location.search);
+    let kind = qs.get('kind') || ''; let tplSlug = qs.get('tpl') || ''; let code = qs.get('order') || localStorage.getItem('sf_order') || '';
+    let st: any = null;
+    const STEPS = ['Thông tin', 'Chat với AI', 'Mockup', 'Thanh toán', 'Hoàn tất'];
+    const show = (n: number) => {
+      [1, 2, 3, 4, 5].forEach((i) => ($('s' + i).style.display = i === n ? '' : 'none'));
+      $('stepper').innerHTML = STEPS.map((t, i) => `<div class="${i + 1 < n ? 'done' : i + 1 === n ? 'now' : ''}">${i + 1}. ${t}</div>`).join('');
+      scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    const api = async (path: string, data?: any, method = 'POST') => {
+      const r = await fetch(path, { method, headers: data instanceof FormData ? {} : { 'content-type': 'application/json' }, body: data instanceof FormData ? data : data ? JSON.stringify(data) : undefined });
+      const d = await r.json().catch(() => ({ ok: false, error: 'Lỗi mạng' }));
+      if (!r.ok || d.ok === false) throw Object.assign(new Error(d.error || 'Có lỗi'), { status: r.status });
+      return d;
+    };
+    const vnd = (n: number) => (n || 0).toLocaleString('vi-VN') + 'đ';
+    const esc = (s: string) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]);
+    const md = (s: string) => { // light markdown for brief
+      const inline = (t: string) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      let out = '', tbl: string[][] | null = null;
+      const flush = () => { if (!tbl) return; const rows = tbl.filter((r) => !r.every((c) => /^\s*:?-+:?\s*$/.test(c))); out += '<div class="tbl"><table>' + rows.map((r, i) => '<tr>' + r.map((c) => i ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join('') + '</tr>').join('') + '</table></div>'; tbl = null; };
+      for (const l of (s || '').split('\n')) {
+        if (/^\|.*\|\s*$/.test(l)) { (tbl ||= []).push(l.trim().slice(1, -1).split('|')); continue; } flush();
+        const m = l.match(/^(#{2,4})\s+(.*)/); if (m) out += `<h${m[1].length + 1}>${inline(m[2])}</h${m[1].length + 1}>`;
+        else if (/^- /.test(l)) out += `<li>${inline(l.slice(2))}</li>`; else if (l.trim()) out += `<p>${inline(l)}</p>`;
+      }
+      flush(); return out;
+    };
+
+    // ---- step 1
+    const renderTpls = () => {
+      document.querySelectorAll<HTMLElement>('#kinds [data-kind]').forEach((el) => el.classList.toggle('sel', el.dataset.kind === kind));
+      $('tplwrap').style.display = kind ? '' : 'none';
+      const list = tpls.filter((t: any) => t.kind === kind);
+      if (!list.some((t: any) => t.slug === tplSlug)) tplSlug = list.length === 1 ? list[0].slug : '';
+      $('tpls').innerHTML = list.map((t: any) => `<div class="card tpl ${t.slug === tplSlug ? 'sel' : ''}" data-slug="${t.slug}" style="padding:16px">
+        <div class="sw" style="height:60px;background:linear-gradient(135deg,${t.accent},#14141f)"></div><b>${esc(t.name)}</b>
+        <div class="muted" style="font-size:13px;margin:4px 0">${esc(t.summary)}</div><div style="font-size:13px">từ <b>${vnd(t.base_price)}</b> · ${t.days} ngày${t.demo_url ? ` · <a href="${t.demo_url}" target="_blank" onclick="event.stopPropagation()">xem demo</a>` : ''}</div></div>`).join('');
+      document.querySelectorAll<HTMLElement>('#tpls [data-slug]').forEach((el) => (el.onclick = () => { tplSlug = el.dataset.slug!; renderTpls(); }));
+    };
+    document.querySelectorAll<HTMLElement>('#kinds [data-kind]').forEach((el) => (el.onclick = () => { kind = el.dataset.kind!; renderTpls(); }));
+    renderTpls();
+    $('f1').addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = new FormData(e.target as HTMLFormElement); $('e1').textContent = '';
+      if (!kind) return ($('e1').textContent = 'Bạn chọn loại kết quả nhé');
+      if (!tplSlug) return ($('e1').textContent = 'Bạn chọn một mẫu nhé');
+      try {
+        const btn = (e.target as HTMLFormElement).querySelector('button')!; btn.disabled = true; btn.textContent = 'Đang tạo...';
+        const d = await api('/api/orders', { ...Object.fromEntries(f), consent: f.get('consent') ? 1 : 0, template: tplSlug, utm: location.search.slice(0, 200) });
+        code = d.code; localStorage.setItem('sf_order', code); history.replaceState(null, '', '/bat-dau?order=' + code);
+        (window as any).sfTrack?.('request_start', { template: tplSlug });
+        await load(); await send('[Bắt đầu]', true);
+      } catch (err: any) { $('e1').textContent = err.message; (e.target as HTMLFormElement).querySelector('button')!.disabled = false; (e.target as HTMLFormElement).querySelector('button')!.textContent = 'Bắt đầu chat với AI →'; }
+    });
+
+    // ---- step 2
+    const addMsg = (role: string, text: string) => { const d = document.createElement('div'); d.className = 'msg ' + role; d.textContent = text; $('log').appendChild(d); $('log').scrollTop = 1e9; return d; };
+    const setProgress = (p: any, done?: boolean) => {
+      $('ptext').textContent = `Đã đủ ${p.filled}/${p.total} thông tin bắt buộc`; ($('pbar') as HTMLElement).style.width = (p.total ? (p.filled / p.total) * 100 : 100) + '%';
+      ($('gomock') as HTMLButtonElement).disabled = !(done || p.filled >= p.total);
+      $('missing').textContent = p.missing?.length ? 'Còn thiếu: ' + p.missing.join(', ') : 'Đã đủ thông tin';
+    };
+    const send = async (text: string, silent = false) => {
+      if (!silent) addMsg('user', text);
+      const w = addMsg('assistant', ''); w.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+      try { const d = await api(`/api/orders/${code}/chat`, { text }); w.textContent = d.reply; setProgress(d.progress, d.done); if (d.out_of_template) $('oot').style.display = 'inline-block'; }
+      catch (err: any) { w.textContent = '⚠ ' + err.message; }
+    };
+    $('f2').addEventListener('submit', (e) => { e.preventDefault(); const t = ($('msg') as HTMLTextAreaElement).value.trim(); if (!t) return; ($('msg') as HTMLTextAreaElement).value = ''; send(t); });
+    $('msg').addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter' && !(e as KeyboardEvent).shiftKey) { e.preventDefault(); $('f2').dispatchEvent(new Event('submit')); } });
+    $('file').addEventListener('change', async (e) => {
+      for (const f of Array.from((e.target as HTMLInputElement).files || [])) {
+        const w = addMsg('user', '📎 Đang tải ' + f.name + '...'); const fd = new FormData(); fd.append('file', f);
+        try { await api(`/api/orders/${code}/upload`, fd); w.textContent = '📎 Đã tải ' + f.name; } catch (err: any) { w.textContent = '⚠ ' + err.message; }
+      }
+      (e.target as HTMLInputElement).value = '';
+    });
+    $('gomock').addEventListener('click', async () => {
+      const b = $('gomock') as HTMLButtonElement; b.disabled = true; b.innerHTML = '<span class="typing"><span></span><span></span><span></span></span> AI đang dựng mockup (có thể mất 30 đến 60 giây)...';
+      try { st = await api(`/api/orders/${code}/mockup`, {}); (window as any).sfTrack?.('mockup_view'); renderMock(); }
+      catch (err: any) { alertBox(err.message); b.disabled = false; b.textContent = 'Tổng kết & xem mockup ✨'; }
+    });
+    const alertBox = (m: string) => { addMsg('assistant', '⚠ ' + m); };
+
+    // ---- step 3
+    const renderMock = () => {
+      const o = st.order; show(3);
+      ($('mframe') as HTMLIFrameElement).srcdoc = o.mockup_html || '<p>Chưa có mockup</p>';
+      $('brief').innerHTML = md(o.brief_md);
+      const left = Math.max(0, maxRev - o.revisions_used); $('revleft').textContent = String(left);
+      ($('revbtn') as HTMLButtonElement).disabled = left <= 0; if (left <= 0) ($('fb') as HTMLTextAreaElement).placeholder = 'Bạn đã dùng hết lượt sửa.';
+      const needQuote = o.out_of_template && o.custom_price === null;
+      $('total').textContent = needQuote ? 'Chờ báo giá' : vnd(o.price + (o.custom_price || 0));
+      $('paybtn').style.display = needQuote ? 'none' : ''; $('quotebtn').style.display = needQuote ? '' : 'none';
+      if (o.status === 'quote_pending') { $('quotebtn').setAttribute('disabled', ''); $('quotebtn').textContent = 'Đã gửi, Salefronts đang báo giá'; }
+      if (!loggedIn) $('paybtn').textContent = 'Tạo tài khoản & thanh toán →';
+    };
+    if (matchMedia('(max-width:860px)').matches) ($('s3grid') as HTMLElement).style.gridTemplateColumns = '1fr';
+    $('f3').addEventListener('submit', async (e) => {
+      e.preventDefault(); $('e3').textContent = ''; const fb = ($('fb') as HTMLTextAreaElement).value.trim(); if (!fb) return ($('e3').textContent = 'Bạn ghi rõ muốn sửa gì');
+      const b = $('revbtn') as HTMLButtonElement; b.disabled = true; b.textContent = 'AI đang sửa...';
+      try { st = await api(`/api/orders/${code}/revise`, { feedback: fb }); ($('fb') as HTMLTextAreaElement).value = ''; renderMock(); } catch (err: any) { $('e3').textContent = err.message; }
+      b.textContent = 'Gửi yêu cầu sửa'; b.disabled = Math.max(0, maxRev - st.order.revisions_used) <= 0;
+    });
+    $('quotebtn').addEventListener('click', async () => { try { await api(`/api/orders/${code}/quote`, {}); await load(); } catch (err: any) { $('e4').textContent = err.message; } });
+    $('paybtn').addEventListener('click', async () => {
+      $('e4').textContent = '';
+      if (!loggedIn) { location.href = '/dang-ky?next=' + encodeURIComponent('/bat-dau?order=' + code + '&pay=1&promo=' + encodeURIComponent(($('promo') as HTMLInputElement).value.trim())); return; }
+      try { const d = await api(`/api/orders/${code}/checkout`, { promo: ($('promo') as HTMLInputElement).value }); startPay(d.payment, d); }
+      catch (err: any) { $('e4').textContent = err.message; }
+    });
+
+    // ---- step 4
+    let timer: any;
+    const startPay = (p: any, d: any = {}) => {
+      show(4); $('paycode').textContent = p.code; ($('qrimg') as HTMLImageElement).src = p.qr_url; $('payamt').textContent = vnd(p.amount) + (d.deposit && d.deposit < d.total ? ` (cọc / tổng ${vnd(d.total)})` : '');
+      if (p.provider === 'demo') { $('demopay').style.display = ''; $('demopay').onclick = async () => { await api(`/api/payments/${p.code}/confirm`, {}); }; }
+      clearInterval(timer);
+      timer = setInterval(async () => { try { const s = await api(`/api/payments/${p.code}/status`, null, 'GET'); if (s.status === 'paid') { clearInterval(timer); (window as any).sfTrack?.('purchase', { value: p.amount, currency: 'VND' }); done(); } } catch {} }, 4000);
+    };
+    const done = () => { show(5); $('code5').textContent = code; ($('go5') as HTMLAnchorElement).href = '/tai-khoan/don/' + code; localStorage.removeItem('sf_order'); };
+
+    // ---- resume
+    async function load() {
+      st = await api(`/api/orders/${code}/state`, null, 'GET');
+      const o = st.order; $('code').textContent = o.code; $('tplname').textContent = st.template.name;
+      if (o.status === 'chatting') {
+        show(2); $('log').innerHTML = ''; st.messages.forEach((m: any) => addMsg(m.role, m.content)); setProgress(st.progress);
+        if (o.out_of_template) $('oot').style.display = 'inline-block';
+      } else if (o.status === 'mockup' || o.status === 'quote_pending') {
+        if (qs.get('promo')) ($('promo') as HTMLInputElement).value = qs.get('promo')!; renderMock(); if (qs.get('pay') && loggedIn && !(o.out_of_template && o.custom_price === null)) $('paybtn').click();
+      } else if (o.status === 'awaiting_payment') {
+        const p = st.payments.filter((x: any) => x.status === 'pending').pop(); if (p) startPay(p); else renderMock();
+      } else { done(); ($('msg5') as HTMLElement).textContent = 'Trạng thái: ' + o.status_label; }
+    }
+    if (code) load().catch((err) => { if (err.status === 403 || err.status === 404) { localStorage.removeItem('sf_order'); code = ''; show(1); } else show(1); });
+    else show(1);
+  </script>
+</Base>

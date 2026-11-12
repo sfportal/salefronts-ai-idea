@@ -1,0 +1,90 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+import { KIND_LABEL } from '../../lib/orders';
+const env = Astro.locals.runtime.env;
+const editId = Astro.url.searchParams.get('edit');
+const tab = Astro.url.searchParams.get('tab') || 'list';
+const tpls = await all<any>(env.DB, "SELECT t.*, (SELECT COUNT(*) FROM orders o WHERE o.template_id=t.id AND o.status IN ('paid','in_progress','delivered')) used FROM templates t ORDER BY kind, sort, id");
+const edit: any = editId === 'new' ? { id: '', kind: 'web', slug: '', name: '', options: '[]', base_price: 0, days: 3, accent: '#7c5cff', active: 1, sort: 0 } : editId ? await first(env.DB, 'SELECT * FROM templates WHERE id=?', Number(editId)) : null;
+const reqs = tab === 'req' ? await all<any>(env.DB, 'SELECT r.*, o.code FROM template_requests r LEFT JOIN orders o ON o.id=r.order_id ORDER BY (r.status=\'open\') DESC, r.votes DESC, r.id DESC') : [];
+const RS: any = { open: ['Mới', 'warn'], planned: ['Đã lên kế hoạch', 'info'], done: ['Đã có mẫu', 'good'], dismissed: ['Bỏ qua', 'bad'] };
+---
+<Admin title="Kho mẫu" active="templates">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h1>Kho mẫu</h1><a class="btn sm" href="?edit=new">+ Thêm mẫu</a></div>
+  <div class="tabs"><a href="?tab=list" class={tab === 'list' && !edit ? 'on' : ''}>Danh sách mẫu</a><a href="?tab=req" class={tab === 'req' ? 'on' : ''}>Đề xuất mẫu mới (từ yêu cầu ngoài mẫu)</a></div>
+
+  {edit && (
+    <form class="card" id="tf" style="margin-bottom:20px">
+      <h3>{edit.id ? 'Sửa mẫu: ' + edit.name : 'Mẫu mới'}</h3>
+      <input type="hidden" name="id" value={edit.id} />
+      <div class="row">
+        <div><label>Loại</label><select name="kind">{['web', 'extension', 'media'].map((k) => <option value={k} selected={edit.kind === k}>{KIND_LABEL[k]}</option>)}</select></div>
+        <div><label>Tên mẫu</label><input name="name" value={edit.name} required /></div>
+        <div><label>Slug (mã, không dấu)</label><input name="slug" value={edit.slug} required pattern="[a-z0-9\-]+" /></div>
+      </div>
+      <div class="row">
+        <div><label>Giá gốc (đ)</label><input name="base_price" type="number" value={edit.base_price} /></div>
+        <div><label>Số ngày làm</label><input name="days" type="number" value={edit.days} /></div>
+        <div><label>Màu nhận diện</label><input name="accent" type="color" value={edit.accent} style="height:46px" /></div>
+        <div><label>Thứ tự</label><input name="sort" type="number" value={edit.sort} /></div>
+      </div>
+      <label>Ngành phù hợp</label><input name="industries" value={edit.industries || ''} />
+      <label>Mô tả ngắn (khách thấy)</label><textarea name="summary">{edit.summary || ''}</textarea>
+      <div class="row">
+        <div><label>Link demo</label><input name="demo_url" value={edit.demo_url || ''} placeholder="https://..." /></div>
+        <div><label>Repo GitHub gốc</label><input name="repo_url" value={edit.repo_url || ''} placeholder="https://github.com/..." /></div>
+        <div><label>Ảnh xem trước (URL)</label><input name="preview_url" value={edit.preview_url || ''} /></div>
+      </div>
+      <label>Điểm chỉnh được (AI chỉ hỏi những điểm này)</label>
+      <div class="tbl"><table id="opts"><thead><tr><th>Key</th><th>Tên điểm</th><th>Câu AI hỏi</th><th>Bắt buộc</th><th>Giá cộng (đ)</th><th></th></tr></thead><tbody></tbody></table></div>
+      <button type="button" class="btn sm ghost" id="addopt" style="margin-top:8px">+ Thêm điểm chỉnh</button>
+      <input type="hidden" name="options" value={edit.options} />
+      <label>Chỉ dẫn cho Claude khi thực hiện (cách sửa trên mẫu, file nào được đổi)</label><textarea name="claude_notes" style="min-height:110px">{edit.claude_notes || ''}</textarea>
+      <label>Hướng dẫn sử dụng soạn sẵn (Markdown, tự ghép vào kết quả gửi khách)</label><textarea name="guide_md" style="min-height:160px">{edit.guide_md || ''}</textarea>
+      <label style="display:flex;gap:10px;color:var(--text)"><input type="checkbox" name="active" checked={!!edit.active} style="width:auto" /> Đang bật (khách thấy và chọn được)</label>
+      <div style="display:flex;gap:8px;margin-top:14px"><button class="btn">Lưu mẫu</button><a class="btn ghost" href="/admin/templates">Huỷ</a></div>
+    </form>
+  )}
+
+  {tab === 'list' && (
+    <div class="card tbl"><table><tr><th>Mẫu</th><th>Loại</th><th>Giá gốc</th><th>Điểm chỉnh</th><th>Đơn đã dùng</th><th>Trạng thái</th><th></th></tr>
+      {tpls.map((t) => <tr>
+        <td><span style={`display:inline-block;width:12px;height:12px;border-radius:4px;background:${t.accent};margin-right:6px`}></span><b>{t.name}</b><br /><span class="muted">{t.slug}</span></td>
+        <td>{KIND_LABEL[t.kind]}</td><td>{vnd(t.base_price)}</td><td>{JSON.parse(t.options || '[]').length}</td><td>{t.used}</td>
+        <td><span class={`chip ${t.active ? 'good' : 'bad'}`}>{t.active ? 'Bật' : 'Tắt'}</span></td>
+        <td style="white-space:nowrap"><a class="btn sm ghost" href={`?edit=${t.id}`}>Sửa</a> <button class="btn sm ghost" onclick={`adm('/templates/${t.id}/duplicate')`}>Nhân bản</button> <button class="btn sm ghost" onclick={`adm('/templates/${t.id}/toggle')`}>{t.active ? 'Tắt' : 'Bật'}</button></td>
+      </tr>)}</table></div>
+  )}
+
+  {tab === 'req' && (
+    <>
+      <p class="muted">Khi khách muốn khác hẳn mẫu, AI ghi lại ở đây. Gom các ý giống nhau, tăng số phiếu, và lên kế hoạch làm mẫu mới.</p>
+      <div class="card tbl"><table><tr><th>Đề xuất</th><th>Loại</th><th>Từ đơn</th><th>Số khách hỏi</th><th>Trạng thái</th></tr>
+        {reqs.map((r) => <tr><td><b>{r.title}</b><br /><span class="muted" style="font-size:13px;white-space:pre-wrap">{r.detail}</span></td><td>{KIND_LABEL[r.kind]}</td><td>{r.code ? <a href={`/admin/orders/${r.order_id}`}>{r.code}</a> : '-'}</td>
+          <td><button class="btn sm ghost" onclick={`adm('/template-requests/${r.id}', { status: '${r.status}', votes: ${r.votes + 1} })`}>▲ {r.votes}</button></td>
+          <td><select onchange={`adm('/template-requests/${r.id}', { status: this.value })`}>{Object.entries(RS).map(([k, v]: any) => <option value={k} selected={r.status === k}>{v[0]}</option>)}</select></td></tr>)}
+        {!reqs.length && <tr><td colspan="5" class="muted">Chưa có đề xuất.</td></tr>}</table></div>
+    </>
+  )}
+
+  <script>
+    const tf = document.getElementById('tf') as HTMLFormElement | null;
+    if (tf) {
+      const body = tf.querySelector('#opts tbody')!; const hidden = tf.querySelector('[name=options]') as HTMLInputElement;
+      const row = (o: any = {}) => { const tr = document.createElement('tr');
+        tr.innerHTML = `<td><input data-k="key" style="min-width:90px"></td><td><input data-k="label" style="min-width:160px"></td><td><textarea data-k="question" style="min-width:220px;min-height:46px"></textarea></td><td><input type="checkbox" data-k="required" style="width:auto"></td><td><input type="number" data-k="price" style="min-width:110px"></td><td><button type="button" class="btn sm ghost">✕</button></td>`;
+        (tr.querySelector('[data-k=key]') as HTMLInputElement).value = o.key || ''; (tr.querySelector('[data-k=label]') as HTMLInputElement).value = o.label || '';
+        (tr.querySelector('[data-k=question]') as HTMLTextAreaElement).value = o.question || ''; (tr.querySelector('[data-k=required]') as HTMLInputElement).checked = !!o.required;
+        (tr.querySelector('[data-k=price]') as HTMLInputElement).value = o.price || 0; tr.querySelector('button')!.onclick = () => tr.remove(); body.appendChild(tr); };
+      JSON.parse(hidden.value || '[]').forEach(row); document.getElementById('addopt')!.onclick = () => row();
+      tf.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const opts = [...body.querySelectorAll('tr')].map((tr) => ({ key: (tr.querySelector('[data-k=key]') as HTMLInputElement).value.trim(), label: (tr.querySelector('[data-k=label]') as HTMLInputElement).value.trim(), question: (tr.querySelector('[data-k=question]') as HTMLTextAreaElement).value.trim(), required: (tr.querySelector('[data-k=required]') as HTMLInputElement).checked, price: Number((tr.querySelector('[data-k=price]') as HTMLInputElement).value) || 0 })).filter((o) => o.key);
+        const data = (window as any).formObj(tf); data.options = opts;
+        await (window as any).adm('/templates', data, { reload: false }); location.href = '/admin/templates';
+      });
+    }
+  </script>
+</Admin>

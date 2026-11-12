@@ -1,0 +1,32 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+const env = Astro.locals.runtime.env;
+const promos = await all<any>(env.DB, 'SELECT * FROM promos ORDER BY active DESC, id DESC');
+const ed = Astro.url.searchParams.get('edit'); const e: any = ed ? (ed === 'new' ? { active: 1, type: 'pct' } : await first(env.DB, 'SELECT * FROM promos WHERE id=?', Number(ed))) : null;
+---
+<Admin title="Khuyến mãi" active="promos">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h1>Khuyến mãi</h1><a class="btn sm" href="?edit=new">+ Mã mới</a></div>
+  {e && (
+    <form class="card" style="margin-bottom:18px" onsubmit="event.preventDefault(); adm('/promos', formObj(this), { reload: false }).then(() => location.href='/admin/promos')">
+      <input type="hidden" name="id" value={e.id || ''} />
+      <div class="row">
+        <div><label>Mã</label><input name="code" value={e.code || ''} required style="text-transform:uppercase" /></div>
+        <div><label>Kiểu</label><select name="type"><option value="pct" selected={e.type === 'pct'}>Giảm %</option><option value="amount" selected={e.type === 'amount'}>Giảm số tiền</option></select></div>
+        <div><label>Giá trị</label><input name="value" type="number" value={e.value || ''} required /></div>
+        <div><label>Số lượt tối đa</label><input name="max_uses" type="number" value={e.max_uses || ''} /></div>
+      </div>
+      <div class="row">
+        <div><label>Đơn tối thiểu (đ)</label><input name="min_total" type="number" value={e.min_total || 0} /></div>
+        <div><label>Áp cho loại (để trống = tất cả)</label><input name="kinds" value={e.kinds || ''} placeholder="web,extension,media" /></div>
+        <div><label>Bắt đầu</label><input name="starts_at" type="date" value={(e.starts_at || '').slice(0, 10)} /></div>
+        <div><label>Kết thúc</label><input name="ends_at" type="date" value={(e.ends_at || '').slice(0, 10)} /></div>
+      </div>
+      <label>Ghi chú</label><input name="note" value={e.note || ''} />
+      <label style="display:flex;gap:10px;color:var(--text)"><input type="checkbox" name="active" checked={!!e.active} style="width:auto" /> Đang bật</label>
+      <button class="btn" style="margin-top:10px">Lưu</button>
+    </form>)}
+  <div class="card tbl"><table><tr><th>Mã</th><th>Giảm</th><th>Đã dùng</th><th>Điều kiện</th><th>Thời gian</th><th>Trạng thái</th><th></th></tr>
+    {promos.map((p) => <tr><td><b>{p.code}</b><br /><span class="muted">{p.note}</span></td><td>{p.type === 'pct' ? p.value + '%' : vnd(p.value)}</td><td>{p.used}{p.max_uses ? ' / ' + p.max_uses : ''}</td><td>{p.min_total ? 'từ ' + vnd(p.min_total) : '-'} {p.kinds}</td><td>{p.starts_at || '...'} → {p.ends_at || '...'}</td><td><span class={`chip ${p.active ? 'good' : 'bad'}`}>{p.active ? 'Bật' : 'Tắt'}</span></td><td><a class="btn sm ghost" href={`?edit=${p.id}`}>Sửa</a></td></tr>)}</table></div>
+</Admin>

@@ -1,0 +1,116 @@
+---
+import Base from '../layouts/Base.astro';
+import { all } from '../lib/db';
+import { vnd } from '../lib/util';
+const env = Astro.locals.runtime.env;
+const s = Astro.locals.settings;
+const tpls = await all<any>(env.DB, 'SELECT * FROM templates WHERE active=1 ORDER BY sort LIMIT 6');
+const title = s.hero_title || 'Mô tả ý tưởng. AI chốt yêu cầu. Nhận sản phẩm số.';
+const words = title.split(' ');
+const KIND = [
+  { k: 'media', ico: '🎬', t: 'Media', d: 'Video Reels, TVC có lồng tiếng, ảnh sản phẩm AI, catalogue PDF. Gửi ảnh, nhận file đúng khổ từng kênh.', from: 'từ 350.000đ' },
+  { k: 'extension', ico: '🧩', t: 'Extension', d: 'Tiện ích Chrome làm trên mẫu đã chạy thật: Zalo Chăm Khách, Collector. Đổi tên, nhãn, mẫu tin theo doanh nghiệp bạn.', from: 'từ 1.500.000đ' },
+  { k: 'web', ico: '🛒', t: 'Web', d: 'Web bán hàng có giỏ hàng và VietQR, landing page, mini-shop / menu QR. Dựng trên mẫu, bạn sở hữu mã nguồn.', from: 'từ 990.000đ' },
+];
+const STEPS = [
+  ['Điền thông tin', 'Số Zalo, họ tên, ngành, tên công ty. Chưa cần tài khoản.'],
+  ['Chọn loại và mẫu', 'Media, Extension hay Web, rồi chọn mẫu gần nhất với ý bạn.'],
+  ['Chat với AI', 'AI hỏi đúng những điểm mẫu chỉnh được tới khi đủ để làm.'],
+  ['Xem mockup', 'Phiếu yêu cầu + bản mô phỏng kết quả. Sửa tối đa 2 lần.'],
+  ['Thanh toán VietQR', 'Tạo tài khoản, quét mã, hệ thống tự xác nhận trong vài giây.'],
+  ['Nhận kết quả', 'Link web, GitHub, file extension hoặc media, kèm hướng dẫn chi tiết.'],
+];
+---
+<Base>
+  <section class="hero">
+    <div class="gridbg"></div>
+    <div class="wrap">
+      <span class="eyebrow rv in">✦ Sản phẩm số cho SME, làm bằng Claude</span>
+      <h1 style="margin-top:22px">{words.map((w, i) => <span class={'word' + (i >= words.length - 3 ? ' grad' : '')} style={`animation-delay:${0.08 * i}s`}>{w}&nbsp;</span>)}</h1>
+      <p class="lead rv d2">Bạn kể nhu cầu, AI hỏi lại tới khi đủ, rồi dựng ngay bản mô phỏng trên mẫu có sẵn. Ưng ý mới thanh toán, Salefronts duyệt và giao kết quả kèm hướng dẫn.</p>
+      <div class="cta rv d3">
+        <a class="btn" href="/bat-dau" data-ev="cta_hero">Bắt đầu yêu cầu miễn phí →</a>
+        <a class="btn ghost" href="/dat-lich" data-ev="cta_consult">Đặt lịch tư vấn AI 60 phút</a>
+      </div>
+      <div class="orbit rv d4" aria-hidden="true">
+        <div class="ring"></div><div class="ring r2"></div>
+        <div class="core">Yêu cầu<br/>của bạn</div>
+        <div class="sat" style="transform:rotate(0deg) translate(min(240px,40vw)) rotate(0deg)"><b>🎬</b>Media</div>
+        <div class="sat" style="transform:rotate(120deg) translate(min(240px,40vw)) rotate(-120deg)"><b>🧩</b>Extension</div>
+        <div class="sat" style="transform:rotate(240deg) translate(min(240px,40vw)) rotate(-240deg)"><b>🛒</b>Web</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="marquee"><div class="marquee-track">
+    {[...Array(2)].map(() => ['Quà tặng, đặc sản', 'Cà phê rang xay', 'Nông sản OCOP', 'Quán cà phê, nhà hàng', 'Bất động sản', 'Phân phối, FMCG', 'Hộ kinh doanh', 'Shop online'].map((t) => <span>{t}</span>))}
+  </div></div>
+
+  <section id="loai">
+    <div class="wrap">
+      <div class="center rv"><span class="eyebrow">3 loại kết quả</span><h2 style="margin-top:14px">Chọn thứ bạn cần, <span class="grad">AI lo phần còn lại</span></h2>
+      <p class="muted">Extension và Web luôn làm trên mẫu đã chạy thật, nên nhanh, rẻ và ít rủi ro. Ý tưởng khác hẳn mẫu sẽ được báo giá riêng.</p></div>
+      <div class="grid g3" style="margin-top:40px">
+        {KIND.map((k, i) => (
+          <a class={`card kind rv d${i + 1}`} href={`/bat-dau?kind=${k.k}`} style="text-decoration:none">
+            <div class="ico">{k.ico}</div><h3>{k.t}</h3><p class="muted">{k.d}</p><span class="chip info">{k.from}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section id="quy-trinh">
+    <div class="wrap">
+      <div class="center rv"><span class="eyebrow">Quy trình</span><h2 style="margin-top:14px">Từ ý tưởng tới sản phẩm trong <span class="grad">6 bước</span></h2></div>
+      <div class="grid g3 steps" style="margin-top:44px">
+        {STEPS.map(([t, d], i) => <div class={`card step rv d${(i % 3) + 1}`}><h3>{t}</h3><p class="muted" style="margin:0">{d}</p></div>)}
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="center rv"><span class="eyebrow">Kho mẫu</span><h2 style="margin-top:14px">Mẫu nổi bật</h2></div>
+      <div class="grid g3" style="margin-top:40px">
+        {tpls.map((t, i) => (
+          <a class={`card tpl kind rv d${(i % 3) + 1}`} href={`/bat-dau?kind=${t.kind}&tpl=${t.slug}`} style="text-decoration:none">
+            <div class="sw" style={`background:linear-gradient(135deg,${t.accent},#14141f)`}></div>
+            <span class="chip">{({ web: 'Web', extension: 'Extension', media: 'Media' } as any)[t.kind]}</span>
+            <h3 style="margin-top:10px">{t.name}</h3><p class="muted" style="font-size:14px">{t.summary}</p><b>từ {vnd(t.base_price)}</b>
+          </a>
+        ))}
+      </div>
+      <p class="center" style="margin-top:28px"><a class="btn ghost" href="/mau">Xem toàn bộ kho mẫu</a></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap grid g3">
+      {[['Gói Thử', '1.200.000đ', 'Chấm điểm fanpage, web chuyên sâu + 4 video ngắn từ ảnh có sẵn.'], ['Gói Mùa Tết', '9.900.000đ', 'Web bán hàng cơ bản, khuôn thương hiệu + 8 video, catalogue 12 trang, Zalo Chăm Khách.'], ['Gói Đầy đủ', '19.900.000đ', 'Web đầy đủ nối tồn kho, TVC, catalogue 24 trang, Zalo Chăm Khách và Zalo OA.']].map(([t, p, d], i) => (
+        <div class={`card kind rv d${i + 1}`} style={i === 1 ? 'border-color:#ff4fd888;box-shadow:0 0 0 1px #ff4fd855' : ''}>
+          {i === 1 && <span class="chip warn">Bán chạy mùa Tết</span>}
+          <h3 style="margin-top:10px">{t}</h3><div class="price grad">{p}</div><p class="muted">{d}</p>
+          <a class="btn sm ghost" href="/dat-lich">Tư vấn gói này</a>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap grid g2">
+      <div class="card rv"><span class="eyebrow">Tư vấn 1:1</span><h2 style="margin-top:12px">Chưa biết bắt đầu từ đâu?</h2>
+        <p class="muted">60 phút cùng chuyên gia và AI: chấm điểm kênh hiện có, chọn sản phẩm đáng làm trước, lên kế hoạch theo ngân sách. 2.000.000đ, trừ vào đơn nếu đặt làm trong 14 ngày.</p>
+        <a class="btn" href="/dat-lich">Đặt lịch tư vấn</a></div>
+      <div class="card rv d2"><span class="eyebrow">Giới thiệu bạn bè</span><h2 style="margin-top:12px">Chia sẻ là có hoa hồng</h2>
+        <p class="muted">Mỗi tài khoản có link giới thiệu riêng. Bạn nhận {s.aff_commission_pct || 10}% giá trị đơn đã giao, bạn bè được giảm {s.aff_discount_pct || 5}% đơn đầu tiên.</p>
+        <a class="btn ghost" href="/tai-khoan/gioi-thieu">Lấy link giới thiệu</a></div>
+    </div>
+  </section>
+
+  <section class="center">
+    <div class="wrap rv"><h2>Sẵn sàng biến ý tưởng thành <span class="grad">sản phẩm</span>?</h2>
+      <p class="muted">Chat với AI chỉ mất vài phút. Bạn chỉ trả tiền khi đã ưng mockup.</p>
+      <a class="btn" href="/bat-dau" data-ev="cta_bottom">Bắt đầu yêu cầu →</a></div>
+  </section>
+</Base>

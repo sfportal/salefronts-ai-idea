@@ -1,0 +1,62 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all } from '../../lib/db';
+const env = Astro.locals.runtime.env;
+const s: any = Astro.locals.settings || {};
+const role = Astro.locals.user.role;
+const staff = role === 'owner' ? await all<any>(env.DB, "SELECT id,email,name,role,created_at FROM users WHERE role IN ('staff','admin','owner') ORDER BY role DESC, id") : [];
+const audits = await all<any>(env.DB, 'SELECT * FROM audit ORDER BY id DESC LIMIT 30');
+const SECRETS: [string, string][] = [
+  ['SESSION_SECRET', 'Khoá ký phiên đăng nhập'], ['ANTHROPIC_API_KEY', 'Claude (phỏng vấn, mockup, chatbot)'], ['DEEPSEEK_API_KEY', 'DeepSeek (tuỳ chọn)'],
+  ['SEPAY_API_KEY', 'SePay (thanh toán thật)'], ['GOOGLE_CLIENT_ID', 'Đăng nhập Google'], ['GOOGLE_CLIENT_SECRET', 'Đăng nhập Google'],
+  ['HANDOFF_WEBHOOK_URL', 'Webhook gửi việc cho Claude uyminh-6'], ['ADMIN_BOOTSTRAP_KEY', 'Khoá vào admin tạm thời'],
+];
+const has = (k: string) => !!(env as any)[k];
+---
+<Admin title="Cài đặt" active="settings">
+  <h1>Cài đặt</h1>
+  <form class="card" style="margin-bottom:18px" onsubmit="event.preventDefault(); adm('/settings', formObj(this))">
+    <h3>AI</h3>
+    <div class="row">
+      <div><label>AI phỏng vấn & mockup</label><select name="ai_provider">{['claude', 'deepseek', 'mock'].map((v) => <option value={v} selected={s.ai_provider === v}>{v}</option>)}</select></div>
+      <div><label>Model Claude</label><input name="ai_model" value={s.ai_model || 'claude-opus-5-5'} /></div>
+      <div><label>Model DeepSeek</label><input name="deepseek_model" value={s.deepseek_model || 'deepseek-chat'} /></div>
+    </div>
+    <div class="row">
+      <div><label>Chatbot hỗ trợ</label><select name="support_provider">{['claude', 'deepseek', 'mock'].map((v) => <option value={v} selected={s.support_provider === v}>{v}</option>)}</select></div>
+      <div><label>Model chatbot</label><input name="support_model" value={s.support_model || ''} /></div>
+    </div>
+    <label>Kiến thức cho chatbot (câu hỏi thường gặp, chính sách)</label><textarea name="support_kb" style="min-height:140px">{s.support_kb || ''}</textarea>
+    <h3 style="margin-top:18px">Quy trình & giá</h3>
+    <div class="row">
+      <div><label>Số lần sửa mockup tối đa</label><input name="max_revisions" type="number" min="0" value={s.max_revisions || 2} /></div>
+      <div><label>Đặt cọc khi đơn từ (đ)</label><input name="deposit_threshold" type="number" value={s.deposit_threshold || 5000000} /></div>
+      <div><label>Tỉ lệ cọc (%)</label><input name="deposit_pct" type="number" min="0" max="100" value={s.deposit_pct || 50} /></div>
+      <div><label>Giá buổi tư vấn 60 phút (đ)</label><input name="consult_price" type="number" value={s.consult_price || 2000000} /></div>
+    </div>
+    <div class="row">
+      <div><label>Hoa hồng giới thiệu (%)</label><input name="aff_commission_pct" type="number" value={s.aff_commission_pct || 10} /></div>
+      <div><label>Giảm cho khách được giới thiệu (%)</label><input name="aff_discount_pct" type="number" value={s.aff_discount_pct || 5} /></div>
+      <div><label>Google Analytics 4 (G-XXXX)</label><input name="ga4_id" value={s.ga4_id || ''} /></div>
+    </div>
+    <label>Tiêu đề trang chủ</label><input name="hero_title" value={s.hero_title || ''} />
+    <button class="btn" style="margin-top:14px">Lưu cài đặt</button>
+  </form>
+
+  <div class="card" style="margin-bottom:18px"><h3>Khoá bí mật (đặt bằng <code>wrangler secret put</code>)</h3>
+    <div class="tbl"><table>{SECRETS.map(([k, d]) => <tr><td><code>{k}</code></td><td>{d}</td><td><span class={`chip ${has(k) ? 'good' : 'warn'}`}>{has(k) ? 'Đã đặt' : 'Chưa đặt (chạy chế độ demo)'}</span></td></tr>)}</table></div></div>
+
+  {role === 'owner' && (
+    <div class="card" style="margin-bottom:18px"><h3>Nhân sự & phân quyền</h3>
+      <div class="tbl"><table><tr><th>Email</th><th>Tên</th><th>Vai trò</th><th></th></tr>
+        {staff.map((x) => <tr><td>{x.email}</td><td>{x.name}</td><td><span class="chip">{x.role}</span></td><td>{x.role !== 'owner' && <button class="btn sm ghost" onclick={`adm('/users', { email: '${x.email}', role: 'customer' })`}>Gỡ quyền</button>}</td></tr>)}</table></div>
+      <form class="toolbar" style="margin-top:10px" onsubmit="event.preventDefault(); adm('/users', formObj(this))">
+        <input name="email" type="email" required placeholder="email@cong-ty.com" /><input name="name" placeholder="Tên" />
+        <select name="role"><option value="staff">staff (xử lý đơn, CSKH)</option><option value="admin">admin (thêm cài đặt, trạng thái)</option></select>
+        <button class="btn sm">Cấp quyền</button></form>
+      <span class="muted" style="font-size:13px">Nhân sự đăng nhập bằng Google với đúng email được cấp.</span></div>)}
+
+  <div class="card"><h3>Nhật ký thao tác</h3>
+    {audits.map((a) => <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)"><span class="muted">{a.created_at} · {a.actor}</span> {a.action} {a.target}</div>)}
+    {!audits.length && <span class="muted">Chưa có.</span>}</div>
+</Admin>

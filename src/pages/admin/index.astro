@@ -1,0 +1,37 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { all, first } from '../../lib/db';
+import { vnd } from '../../lib/util';
+import { STATUS } from '../../lib/orders';
+const env = Astro.locals.runtime.env;
+const k: any = await first(env.DB, `SELECT
+  (SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='paid' AND paid_at >= date('now','start of month')) rev_month,
+  (SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='paid') rev_all,
+  (SELECT COUNT(*) FROM leads WHERE created_at >= date('now','-30 day')) leads30,
+  (SELECT COUNT(*) FROM users WHERE role='customer') customers,
+  (SELECT COUNT(*) FROM orders WHERE status='paid') to_approve,
+  (SELECT COUNT(*) FROM orders WHERE status='in_progress') doing`);
+const funnel = await all<any>(env.DB, `SELECT type, COUNT(DISTINCT COALESCE(vid, user_id)) n FROM events WHERE created_at >= date('now','-30 day') AND type IN ('request_start','mockup_view','checkout','purchase') GROUP BY type`);
+const fm: any = Object.fromEntries(funnel.map((f) => [f.type, f.n]));
+const byStatus = await all<any>(env.DB, 'SELECT status, COUNT(*) n FROM orders GROUP BY status');
+const recent = await all<any>(env.DB, 'SELECT o.*, l.name lname, t.name tname FROM orders o JOIN leads l ON l.id=o.lead_id JOIN templates t ON t.id=o.template_id ORDER BY o.updated_at DESC LIMIT 10');
+const stages = [['Tạo yêu cầu', fm.request_start || 0], ['Xem mockup', fm.mockup_view || 0], ['Bấm thanh toán', fm.checkout || 0], ['Đã trả tiền', fm.purchase || 0]];
+const max = Math.max(1, ...stages.map((s) => s[1] as number));
+---
+<Admin title="Tổng quan" active="dash">
+  <h1>Tổng quan</h1>
+  <div class="grid g4">
+    <div class="card kpi"><span class="muted">Doanh thu tháng này</span><b>{vnd(k.rev_month)}</b></div>
+    <div class="card kpi"><span class="muted">Tổng doanh thu</span><b>{vnd(k.rev_all)}</b></div>
+    <div class="card kpi"><span class="muted">Khách mới 30 ngày</span><b>{k.leads30}</b></div>
+    <div class="card kpi"><a href="/admin/orders?status=paid" style="text-decoration:none"><span class="muted">Chờ duyệt / đang làm</span><b>{k.to_approve} / {k.doing}</b></a></div>
+  </div>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h3>Phễu 30 ngày</h3>
+      {stages.map(([l, n], i) => <div style="margin:10px 0"><div style="display:flex;justify-content:space-between;font-size:14px"><span>{l}</span><b>{n}</b></div><div class="progress"><i style={`width:${((n as number) / max) * 100}%`}></i></div>{i > 0 && (stages[i - 1][1] as number) > 0 && <span class="muted" style="font-size:12px">{Math.round(((n as number) / (stages[i - 1][1] as number)) * 100)}% từ bước trước</span>}</div>)}
+    </div>
+    <div class="card"><h3>Đơn theo trạng thái</h3><table>{byStatus.map((s) => <tr><td><span class={`chip ${STATUS[s.status]?.tone}`}>{STATUS[s.status]?.label || s.status}</span></td><td><b>{s.n}</b></td></tr>)}</table></div>
+  </div>
+  <div class="card tbl" style="margin-top:18px"><h3>Hoạt động gần đây</h3><table><tr><th>Mã</th><th>Khách</th><th>Mẫu</th><th>Trạng thái</th><th>Tổng</th><th>Cập nhật</th></tr>
+    {recent.map((o) => <tr><td><a href={`/admin/orders/${o.id}`}>{o.code}</a></td><td>{o.lname}</td><td>{o.tname}</td><td><span class={`chip ${STATUS[o.status]?.tone}`}>{STATUS[o.status]?.label}</span></td><td>{vnd(o.total)}</td><td>{o.updated_at}</td></tr>)}</table></div>
+</Admin>

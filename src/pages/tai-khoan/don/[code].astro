@@ -1,0 +1,78 @@
+---
+import Portal from '../../../layouts/Portal.astro';
+import { all, first } from '../../../lib/db';
+import { vnd, md, parseJSON, esc } from '../../../lib/util';
+import { loadOrder } from '../../../lib/access';
+import { STATUS, STEPS, KIND_LABEL } from '../../../lib/orders';
+const env = Astro.locals.runtime.env;
+let o: any;
+try { o = await loadOrder(env, Astro.params.code!, Astro.locals); } catch { return Astro.redirect('/tai-khoan'); }
+const tpl: any = await first(env.DB, 'SELECT * FROM templates WHERE id=?', o.template_id);
+const events = await all<any>(env.DB, 'SELECT * FROM order_events WHERE order_id=? ORDER BY id DESC', o.id);
+const files = await all<any>(env.DB, 'SELECT * FROM files WHERE order_id=? ORDER BY id', o.id);
+const msgs = await all<any>(env.DB, "SELECT * FROM messages WHERE order_id=? AND role IN ('user','assistant') ORDER BY id", o.id);
+const st = STATUS[o.status]; const step = st?.step || 0;
+const remain = o.total - o.paid_amount;
+const locked = o.status === 'delivered' && remain > 0;
+const deliverables = parseJSON<any[]>(o.deliverables, []);
+const payRows: [string, string][] = [['Tổng', vnd(o.total)], ...(o.discount > 0 ? [['Đã giảm', `${vnd(o.discount)} ${o.promo_code || ''}`] as [string, string]] : []), ['Đã trả', vnd(o.paid_amount)], ['Còn lại', vnd(Math.max(0, remain))]];
+const ICON: any = { github: '🐙', web: '🌐', extension: '🧩', media: '🎬', file: '📦', link: '🔗' };
+---
+<Portal title={`Đơn ${o.code}`} tab="don">
+  <a href="/tai-khoan" class="muted" style="font-size:14px">← Đơn của tôi</a>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
+    <h2 style="margin:0">{o.code} · {tpl.name}</h2><span class={`chip ${st?.tone}`} style="font-size:14px">{st?.label}</span>
+  </div>
+  {step > 0 && <div class="stepper">{STEPS.map((t, i) => <div class={i + 1 < step ? 'done' : i + 1 === step ? 'now' : ''}>{i + 1}. {t}</div>)}</div>}
+
+  {['chatting', 'mockup', 'awaiting_payment', 'quote_pending'].includes(o.status) && (
+    <div class="card" style="margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <span>{o.status === 'quote_pending' ? 'Salefronts đang báo giá phần ngoài mẫu. Bạn sẽ nhận thông báo khi có giá.' : 'Yêu cầu chưa hoàn tất. Tiếp tục để gửi cho Salefronts.'}</span>
+      <a class="btn sm" href={`/bat-dau?order=${o.code}`}>Tiếp tục</a>
+    </div>)}
+  {o.status === 'rejected' && <div class="card" style="border-color:#ef444466;margin-bottom:18px"><b>Yêu cầu bị trả lại:</b> {o.reject_reason}<br /><span class="muted">Số tiền đã thanh toán sẽ được hoàn trong 3 ngày làm việc.</span></div>}
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);align-items:start" id="dg">
+    <div class="grid" style="gap:18px">
+      {(o.status === 'delivered' || deliverables.length > 0) && (
+        <div class="card" style="border-color:#22c55e66">
+          <h3>🎁 Kết quả</h3>
+          {locked ? (
+            <div><p>Kết quả đã sẵn sàng. Bạn thanh toán phần còn lại <b>{vnd(remain)}</b> để mở khoá tải về và hướng dẫn sử dụng.</p>
+              <button class="btn" id="paybal">Thanh toán {vnd(remain)}</button>
+              <div id="balbox" class="center" style="display:none;margin-top:14px"><div class="qr"><img id="balqr" alt="VietQR" /></div><p class="muted" id="balst">Đang chờ tiền về...</p><button class="btn ghost sm" id="baldemo" style="display:none">Chế độ demo: giả lập đã chuyển khoản</button></div></div>
+          ) : (
+            <div class="grid" style="gap:10px">
+              {deliverables.map((d) => (
+                <a class="card kind" style="padding:14px;display:flex;gap:14px;align-items:center;text-decoration:none" href={d.file_id ? `/api/files/${d.file_id}` : d.url} target="_blank" rel="noopener">
+                  <span style="font-size:28px">{ICON[d.type] || '🔗'}</span><span><b>{d.title}</b><br /><span class="muted" style="font-size:13px">{d.file_id ? 'Tải tệp' : d.url}</span></span>
+                </a>))}
+              {o.guide_md && <div class="prose" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px" set:html={md(o.guide_md)} />}
+            </div>
+          )}
+        </div>)}
+      {o.brief_md && <div class="card prose"><Fragment set:html={md(o.brief_md)} /></div>}
+      {o.mockup_html && <div><h3>Bản mô phỏng đã duyệt</h3><div class="mock"><iframe sandbox="" srcdoc={o.mockup_html} title="Mockup"></iframe><div class="wm">BẢN MÔ PHỎNG</div></div></div>}
+    </div>
+    <div class="grid" style="gap:18px">
+      <div class="card"><h3>Thanh toán</h3>
+        <table><tbody>{payRows.map(([k, v]) => <tr><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div>
+      <div class="card"><h3>Tiến trình</h3>
+        {events.map((e) => <div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="font-size:13px" class="muted">{e.created_at}</div><div>{e.note}</div></div>)}</div>
+      {files.filter((f) => f.kind === 'upload').length > 0 && <div class="card"><h3>Tư liệu đã gửi</h3>{files.filter((f) => f.kind === 'upload').map((f) => <div><a href={`/api/files/${f.id}`}>📎 {f.name}</a></div>)}</div>}
+      <details class="card"><summary style="cursor:pointer"><b>Lịch sử chat với AI</b> ({msgs.length})</summary>
+        <div class="chat" style="height:auto;max-height:420px;margin-top:10px"><div class="log">{msgs.map((m) => <div class={`msg ${m.role}`}>{m.content}</div>)}</div></div></details>
+    </div>
+  </div>
+  <script define:vars={{ code: o.code }}>
+    if (matchMedia('(max-width:860px)').matches) document.getElementById('dg').style.gridTemplateColumns = '1fr';
+    const pb = document.getElementById('paybal');
+    if (pb) pb.onclick = async () => {
+      const r = await fetch(`/api/orders/${code}/pay-balance`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); const d = await r.json();
+      if (!d.ok) return alert(d.error);
+      document.getElementById('balbox').style.display = ''; document.getElementById('balqr').src = d.payment.qr_url; pb.style.display = 'none';
+      if (d.payment.provider === 'demo') { const b = document.getElementById('baldemo'); b.style.display = ''; b.onclick = () => fetch(`/api/payments/${d.payment.code}/confirm`, { method: 'POST' }); }
+      const t = setInterval(async () => { const s = await (await fetch(`/api/payments/${d.payment.code}/status`)).json(); if (s.status === 'paid') { clearInterval(t); location.reload(); } }, 4000);
+    };
+  </script>
+</Portal>

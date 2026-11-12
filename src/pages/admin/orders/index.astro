@@ -1,0 +1,21 @@
+---
+import Admin from '../../../layouts/Admin.astro';
+import { all } from '../../../lib/db';
+import { vnd } from '../../../lib/util';
+import { STATUS, KIND_LABEL } from '../../../lib/orders';
+const env = Astro.locals.runtime.env;
+const status = Astro.url.searchParams.get('status') || 'queue'; const q = Astro.url.searchParams.get('q') || '';
+const where: string[] = []; const args: any[] = [];
+if (status === 'queue') where.push("o.status IN ('paid','quote_pending')"); else if (status !== 'all') { where.push('o.status=?'); args.push(status); }
+if (q) { where.push('(o.code LIKE ? OR l.name LIKE ? OR l.phone LIKE ?)'); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+const rows = await all<any>(env.DB, `SELECT o.*, l.name lname, l.phone, t.name tname FROM orders o JOIN leads l ON l.id=o.lead_id JOIN templates t ON t.id=o.template_id ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY o.updated_at DESC LIMIT 200`, ...args);
+const TABS = [['queue', 'Cần xử lý'], ['in_progress', 'Đang làm'], ['delivered', 'Đã giao'], ['awaiting_payment', 'Chờ thanh toán'], ['mockup', 'Có mockup'], ['chatting', 'Đang chat'], ['rejected', 'Trả lại'], ['all', 'Tất cả']];
+---
+<Admin title="Duyệt yêu cầu" active="orders">
+  <h1>Duyệt yêu cầu</h1>
+  <div class="tabs">{TABS.map(([k, l]) => <a href={`?status=${k}`} class={status === k ? 'on' : ''}>{l}</a>)}</div>
+  <form class="toolbar"><input type="hidden" name="status" value={status} /><input name="q" value={q} placeholder="Mã, tên, SĐT" /><button class="btn sm ghost">Tìm</button></form>
+  <div class="card tbl"><table><tr><th>Mã</th><th>Khách</th><th>Loại / mẫu</th><th>Trạng thái</th><th>Tổng / đã trả</th><th>Cập nhật</th></tr>
+    {rows.map((o) => <tr><td><a href={`/admin/orders/${o.id}`}><b>{o.code}</b></a>{o.out_of_template ? <span class="chip warn" style="margin-left:6px">Ngoài mẫu</span> : null}</td><td>{o.lname}<br /><span class="muted">{o.phone}</span></td><td>{KIND_LABEL[o.kind]}<br /><span class="muted">{o.tname}</span></td><td><span class={`chip ${STATUS[o.status]?.tone}`}>{STATUS[o.status]?.label}</span></td><td>{vnd(o.total)}<br /><span class="muted">{vnd(o.paid_amount)}</span></td><td>{o.updated_at}</td></tr>)}
+    {!rows.length && <tr><td colspan="6" class="muted">Không có đơn.</td></tr>}</table></div>
+</Admin>
