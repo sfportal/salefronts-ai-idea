@@ -1,21 +1,29 @@
 ---
 import Base from '../../layouts/Base.astro';
 const env = Astro.locals.runtime.env; const u = Astro.locals.user;
-if (u && ['staff', 'admin', 'owner'].includes(u.role)) return Astro.redirect('/admin');
+if (u && ['staff', 'admin', 'owner'].includes(u.role)) return Astro.redirect(u.must_change_pw ? '/admin/doi-mat-khau' : '/admin');
 const error = Astro.url.searchParams.get('error');
 ---
 <Base title="Đăng nhập quản trị" noSupport>
   <section style="padding-top:80px"><div class="wrap" style="max-width:440px"><div class="card center">
     <div style="font-size:42px">🔐</div><h1 style="font-size:28px">Quản trị Salefronts AI</h1>
-    <p class="muted">Đăng nhập bằng tài khoản Google được cấp quyền.</p>
+    <p class="muted">Đăng nhập bằng email và mật khẩu, hoặc Google.</p>
+    <form id="pw" style="text-align:left"><label>Email</label><input name="email" type="email" required autocomplete="username" /><label>Mật khẩu</label><input name="password" type="password" required autocomplete="current-password" /><div class="err" id="pe"></div><button class="btn" style="width:100%;margin-top:10px">Đăng nhập</button></form>
+    <div class="muted" style="margin:16px 0 10px;font-size:13px">hoặc</div>
     {u && <p class="err">Tài khoản {u.email} chưa có quyền quản trị.</p>}
     {error && <p class="err">{error}</p>}
-    {env.GOOGLE_CLIENT_ID ? <a class="btn" style="width:100%" href="/api/auth/google?next=/admin">Đăng nhập với Google</a> : <p class="chip warn">Chưa cấu hình Google OAuth</p>}
+    {env.GOOGLE_CLIENT_ID ? <a class="btn ghost" style="width:100%" href="/api/auth/google?next=/admin">Đăng nhập với Google</a> : <p class="chip warn">Chưa cấu hình Google OAuth</p>}
     {env.ADMIN_BOOTSTRAP_KEY && (
       <form id="bk" style="margin-top:22px;text-align:left"><label>Mã quản trị tạm (khi chưa có Google)</label><input name="key" type="password" /><div class="err" id="be"></div><button class="btn ghost" style="width:100%;margin-top:8px">Vào bằng mã tạm</button></form>
     )}
   </div></div></section>
   <script>
+    document.getElementById('pw')?.addEventListener('submit', async (e) => {
+      e.preventDefault(); const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target as HTMLFormElement))) });
+      const d = await r.json(); if (!d.ok) { document.getElementById('pe')!.textContent = d.error; return; }
+      if (!['staff', 'admin', 'owner'].includes(d.role)) { document.getElementById('pe')!.textContent = 'Tài khoản này chưa có quyền quản trị'; return; }
+      location.href = d.must_change_pw ? '/admin/doi-mat-khau' : '/admin';
+    });
     document.getElementById('bk')?.addEventListener('submit', async (e) => {
       e.preventDefault(); const r = await fetch('/api/auth/bootstrap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target as HTMLFormElement))) });
       const d = await r.json(); if (d.ok) location.href = '/admin'; else document.getElementById('be')!.textContent = d.error;

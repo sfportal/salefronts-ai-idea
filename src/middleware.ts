@@ -15,7 +15,12 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
 
   const u = ctx.locals.user;
   if (path.startsWith('/admin') && path !== '/admin/login') {
-    if (!u || (ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.staff) return ctx.redirect('/admin/login');
+    if (path === '/admin/doi-mat-khau' && u) { /* any signed-in user may change password */ } else if (!u || (ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.staff) return ctx.redirect('/admin/login');
+  }
+  // forced password change (e.g. default owner password)
+  if (u?.must_change_pw && (path.startsWith('/admin') || path.startsWith('/tai-khoan') || path.startsWith('/api/admin')) && path !== '/admin/doi-mat-khau' && path !== '/admin/login') {
+    if (path.startsWith('/api/')) return new Response(JSON.stringify({ ok: false, error: 'Bạn cần đổi mật khẩu trước' }), { status: 403, headers: { 'content-type': 'application/json' } });
+    return ctx.redirect('/admin/doi-mat-khau');
   }
   if (path.startsWith('/tai-khoan') && !u) return ctx.redirect('/dang-nhap?next=' + encodeURIComponent(path));
 

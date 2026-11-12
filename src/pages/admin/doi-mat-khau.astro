@@ -1,0 +1,24 @@
+---
+import Base from '../../layouts/Base.astro';
+const u = Astro.locals.user;
+if (!u) return Astro.redirect('/admin/login');
+---
+<Base title="Đổi mật khẩu" noSupport>
+  <section style="padding-top:80px"><div class="wrap" style="max-width:440px"><div class="card">
+    <h1 style="font-size:26px">Đổi mật khẩu</h1>
+    {u.must_change_pw ? <p class="chip warn">Lần đầu đăng nhập: bạn cần đặt mật khẩu mới trước khi tiếp tục.</p> : <p class="muted">{u.email}</p>}
+    <form id="cp">
+      <label>Mật khẩu hiện tại</label><input name="current" type="password" required autocomplete="current-password" />
+      <label>Mật khẩu mới (ít nhất 10 ký tự)</label><input name="password" type="password" required minlength="10" autocomplete="new-password" />
+      <label>Nhập lại mật khẩu mới</label><input name="confirm" type="password" required minlength="10" autocomplete="new-password" />
+      <div class="err" id="ce"></div>
+      <button class="btn" style="width:100%;margin-top:12px">Lưu mật khẩu mới</button>
+    </form>
+  </div></div></section>
+  <script>
+    document.getElementById('cp')!.addEventListener('submit', async (e) => {
+      e.preventDefault(); const r = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target as HTMLFormElement))) });
+      const d = await r.json(); if (d.ok) location.href = '/admin'; else document.getElementById('ce')!.textContent = d.error;
+    });
+  </script>
+</Base>

@@ -19,7 +19,7 @@ const M = [
     <aside>
       <a class="logo" href="/" style="padding:6px 12px 18px;color:#fff"><i>✦</i> Quản trị</a>
       {M.map(([k, h, i, l, n]) => <a href={h as string} class={active === k ? 'on' : ''}><span>{i}</span>{l}{(n as number) > 0 && <span class="chip warn" style="margin-left:auto">{n}</span>}</a>)}
-      <div style="margin-top:20px;padding:10px 12px;font-size:12px" class="muted">{u.email}<br /><span class="chip">{u.role}</span><br /><a href="/api/auth/logout" style="padding:0;margin-top:8px">Đăng xuất</a></div>
+      <div style="margin-top:20px;padding:10px 12px;font-size:12px" class="muted">{u.email}<br /><span class="chip">{u.role}</span><br /><a href="/admin/doi-mat-khau" style="padding:0;margin-top:8px">Đổi mật khẩu</a><a href="/api/auth/logout" style="padding:0;margin-top:4px">Đăng xuất</a></div>
     </aside>
     <main><slot /></main>
   </div>

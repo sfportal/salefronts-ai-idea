@@ -51,7 +51,7 @@ export async function sessionCookie(env: Env, uid: number) {
 }
 export async function currentUser(env: Env, request: Request) {
   const s = await verify(env, readCookie(request, 'sid')); if (!s?.uid) return null;
-  return first(env.DB, 'SELECT id,email,name,phone,role,ref_code,avatar,referred_by,created_at FROM users WHERE id=? AND active=1', s.uid);
+  return first(env.DB, 'SELECT id,email,name,phone,role,ref_code,avatar,referred_by,created_at,must_change_pw FROM users WHERE id=? AND active=1', s.uid);
 }
 export function need(user: any, role: 'customer' | 'staff' | 'admin' | 'owner') {
   if (!user) fail(401, 'Bạn cần đăng nhập');
